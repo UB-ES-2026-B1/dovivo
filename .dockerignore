@@ -1,0 +1,22 @@
+# Keep the build context small and never leak local secrets/artifacts into images.
+.git
+.github
+.vscode
+.idea
+.claude
+node_modules
+.next
+out
+build
+coverage
+generated
+*.tsbuildinfo
+.env
+.env*.local
+npm-debug.log*
+.pnpm-debug.log*
+Dockerfile
+docker-compose*.yml
+README.md
+AGENTS.md
+CLAUDE.md

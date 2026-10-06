@@ -1,0 +1,17 @@
+# Normalize line endings so Windows, macOS and Linux produce identical files.
+# Without this, Windows checkouts get CRLF and shell scripts / Docker builds break.
+* text=auto eol=lf
+
+*.sh   text eol=lf
+*.bat  text eol=crlf
+*.cmd  text eol=crlf
+*.ps1  text eol=crlf
+
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.webp binary
+*.ico  binary
+*.woff binary
+*.woff2 binary
