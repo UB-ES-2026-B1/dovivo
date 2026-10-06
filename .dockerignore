@@ -9,7 +9,6 @@ node_modules
 out
 build
 coverage
-generated
 *.tsbuildinfo
 .env
 .env*.local

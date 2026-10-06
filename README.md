@@ -319,7 +319,7 @@ To add a variable, put it in `.env.example` and in `src/env.js`, and in `docker-
 | `Can't reach database server at localhost:5432` | Run `pnpm db:up` and check `docker compose ps`. On Windows/macOS make sure Docker Desktop is running. |
 | Port 5432 / 3000 already in use | Stop the other service, or set `DB_PORT` / `APP_PORT` in `.env` (and update `DATABASE_URL`). |
 | `Invalid environment variables` on start | Copy `.env.example` to `.env` and fill the required values. Use `SKIP_ENV_VALIDATION=1` only for builds. |
-| `@prisma/client did not initialize` / missing `generated/prisma` | Run `pnpm install` or `pnpm prisma generate`. The client is generated per OS and isn't committed. |
+| `@prisma/client did not initialize` | Run `pnpm prisma generate` (it also runs on `pnpm install`). The client is generated per OS inside `node_modules`. |
 | Windows: `pnpm : cannot be loaded because running scripts is disabled` | `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` |
 | Windows: `Filename too long` | `git config --global core.longpaths true` |
 | Windows: weird diffs on every line | Line endings. See the note in Windows prerequisites. |

@@ -67,5 +67,13 @@
   "packageManager": "pnpm@10.34.6",
   "engines": {
     "node": ">=22.12.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@prisma/client",
+      "@prisma/engines",
+      "prisma",
+      "unrs-resolver"
+    ]
   }
 }

@@ -44,8 +44,6 @@ yarn-error.log*
 
 # idea files
 .idea
-# prisma client (generated per-OS on `pnpm install`, never commit it)
-/generated/
 
 # editor (shared VS Code settings are committed)
 .vscode/*

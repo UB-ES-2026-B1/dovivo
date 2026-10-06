@@ -1,6 +1,7 @@
 # syntax=docker/dockerfile:1
 # Multi-stage build for the dovivo Next.js app.
 #   deps     -> installs node_modules + generates the Prisma client for Linux (musl)
+#              (Prisma client lives in node_modules, Next's file tracing copies it into standalone)
 #   builder  -> builds Next.js in "standalone" mode
 #   migrator -> tiny image that runs `prisma migrate deploy` (used by docker compose)
 #   runner   -> production image (non-root, only the standalone output)
@@ -26,7 +27,6 @@ RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile
 # ---------- builder ----------
 FROM base AS builder
 COPY --from=deps /app/node_modules ./node_modules
-COPY --from=deps /app/generated ./generated
 COPY . .
 ENV SKIP_ENV_VALIDATION=1 \
     BUILD_STANDALONE=1
@@ -53,8 +53,6 @@ RUN addgroup -S -g 1001 nodejs && adduser -S -u 1001 -G nodejs nextjs
 COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
-# Prisma client + native query engine (not always picked up by Next's file tracing)
-COPY --from=builder --chown=nextjs:nodejs /app/generated ./generated
 
 USER nextjs
 EXPOSE 3000
