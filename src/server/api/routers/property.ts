@@ -1,3 +1,4 @@
+import { type Prisma } from "@prisma/client";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
@@ -11,6 +12,32 @@ import {
   publicProcedure,
 } from "~/server/api/trpc";
 
+/**
+ * Public image fields. Upload metadata (`mimeType`, `sizeBytes`) is internal and never sent to
+ * clients.
+ */
+const publicImageSelect = {
+  id: true,
+  url: true,
+  thumbnailUrl: true,
+  alt: true,
+  position: true,
+  isCover: true,
+  width: true,
+  height: true,
+} satisfies Prisma.PropertyImageSelect;
+
+/** Gallery order. `position` is unique per listing, so the order is deterministic. */
+const galleryOrderBy = {
+  position: "asc",
+} satisfies Prisma.PropertyImageOrderByWithRelationInput;
+
+/** The cover photo first; falls back to the first gallery photo if none is marked as cover. */
+const coverFirstOrderBy = [
+  { isCover: "desc" },
+  { position: "asc" },
+] satisfies Prisma.PropertyImageOrderByWithRelationInput[];
+
 export const propertyRouter = createTRPCRouter({
   /** Public search used by the /buy and /rent pages. Cursor-based pagination. */
   list: publicProcedure
@@ -21,6 +48,7 @@ export const propertyRouter = createTRPCRouter({
       const items = await ctx.db.property.findMany({
         where: {
           status: "PUBLISHED",
+          deletedAt: null,
           listingType: filters.listingType,
           propertyType: filters.propertyType,
           city: filters.city
@@ -31,8 +59,16 @@ export const propertyRouter = createTRPCRouter({
             : undefined,
           priceCents: { gte: minPriceCents, lte: maxPriceCents },
         },
-        include: { images: { orderBy: { position: "asc" }, take: 1 } },
-        orderBy: { publishedAt: "desc" },
+        include: {
+          // Only the cover is needed for the listing card.
+          images: {
+            select: publicImageSelect,
+            orderBy: coverFirstOrderBy,
+            take: 1,
+          },
+        },
+        // `id` tie-breaker keeps cursor pagination stable when publishedAt is equal.
+        orderBy: [{ publishedAt: "desc" }, { id: "desc" }],
         take: limit + 1,
         cursor: cursor ? { id: cursor } : undefined,
       });
@@ -47,13 +83,17 @@ export const propertyRouter = createTRPCRouter({
       const property = await ctx.db.property.findUnique({
         where: { id: input.id },
         include: {
-          images: { orderBy: { position: "asc" } },
+          images: { select: publicImageSelect, orderBy: galleryOrderBy },
           owner: { select: { id: true, name: true, image: true } },
         },
       });
 
-      const isOwner = property?.ownerId === ctx.session?.user.id;
-      if (!property || (property.status === "DRAFT" && !isOwner)) {
+      // Soft-deleted listings are hidden from everyone, including the owner.
+      if (!property || property.deletedAt) {
+        throw new TRPCError({ code: "NOT_FOUND" });
+      }
+      const isOwner = property.ownerId === ctx.session?.user.id;
+      if (property.status === "DRAFT" && !isOwner) {
         throw new TRPCError({ code: "NOT_FOUND" });
       }
       return property;
@@ -62,7 +102,7 @@ export const propertyRouter = createTRPCRouter({
   /** Listings owned by the logged-in user (dashboard). */
   mine: protectedProcedure.query(({ ctx }) =>
     ctx.db.property.findMany({
-      where: { ownerId: ctx.session.user.id },
+      where: { ownerId: ctx.session.user.id, deletedAt: null },
       orderBy: { updatedAt: "desc" },
     }),
   ),
@@ -81,9 +121,11 @@ export const propertyRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const property = await ctx.db.property.findUnique({
         where: { id: input.id },
-        select: { ownerId: true },
+        select: { ownerId: true, deletedAt: true },
       });
-      if (!property) throw new TRPCError({ code: "NOT_FOUND" });
+      if (!property || property.deletedAt) {
+        throw new TRPCError({ code: "NOT_FOUND" });
+      }
       if (property.ownerId !== ctx.session.user.id) {
         throw new TRPCError({ code: "FORBIDDEN" });
       }

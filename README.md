@@ -74,15 +74,28 @@ flowchart LR
 
 **Domain model** (`prisma/schema.prisma`)
 
+The schema already contains every model of the MVP (see `dovivo_backend_contract.pdf`), even the
+ones whose user story comes in a later sprint, so it doesn't change mid-project.
+
 ```
 User 1─* Property 1─* PropertyImage
-  │          │
-  └─* Favourite *─┘
+ │ │ │      │ │ │
+ │ │ │      │ │ └─* Report *── User (reporter, resolvedBy)
+ │ │ │      │ └─* Conversation 1─* Message *── User (sender)
+ │ │ │      │       └── User (interestedUser, advertiser)
+ │ │ │      └─* Favourite *── User
+ │ │ └─1 UserPreference
+ │ └─* SavedSearch, ContactMessage, PasswordResetToken
+ └─* Account, Session (Auth.js)
 ```
 
 - `Property`: `listingType` (`SALE` | `RENT`), `propertyType` (apartment, house, room...), `status`
   (`DRAFT` → `PUBLISHED` → `RESERVED` → `CLOSED`), price in **cents**, location and features.
-- `User.role`: `USER` | `AGENT` | `ADMIN`.
+  Deleting a listing from the app is a soft delete (`deletedAt`).
+- `User.role`: `USER` | `AGENT` | `ADMIN`. `blockedAt` set = blocked by an admin.
+- `Conversation`: one per property and interested user. `Report`: listing reports for moderation.
+- Deleting a user cascades to their data, except `Report` and `ContactMessage`, which are kept
+  (`SetNull`) for the moderation history.
 
 **Deployment shape (Docker)**: `db` (Postgres) → `migrate` (one-shot `prisma migrate deploy`) →
 `app` (Next.js standalone server, non-root, healthcheck on `/api/health`).
@@ -278,6 +291,25 @@ locally). If you change `DB_PORT`, update the port in `DATABASE_URL` too.
 4. Teammates run `pnpm db:migrate` after pulling (CI/Docker run `prisma migrate deploy`).
 
 Don't use `db:push` on shared databases, and don't edit migrations that are already merged.
+
+**Editing a migration by hand.** Some changes need SQL that Prisma doesn't write for you. Create the
+migration without applying it, edit `migration.sql`, then apply it:
+
+```bash
+pnpm db:generate --name <change> --create-only   # writes the SQL, doesn't apply it
+# edit prisma/migrations/<timestamp>_<change>/migration.sql
+pnpm db:generate                                 # applies the pending migration
+```
+
+You need it when:
+
+- **A new required column on a table that may have rows.** `ADD COLUMN ... NOT NULL` fails if a
+  teammate's database has data. Add it with a temporary `DEFAULT` (or nullable + `UPDATE`), then
+  `DROP DEFAULT` / `SET NOT NULL`. See `*_full_mvp_schema/migration.sql`.
+- **Constraints Prisma can't express**: partial unique indexes (`... WHERE "isCover"`), `CHECK`s,
+  extensions. Leave a comment in `schema.prisma` saying the constraint lives in the migration.
+
+Mark every hand edit with an SQL comment.
 
 ## Environment variables
 

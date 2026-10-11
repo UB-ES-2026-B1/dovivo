@@ -39,6 +39,7 @@ export const createPropertySchema = z.object({
   areaM2: z.number().int().positive().optional(),
   address: z.string().trim().min(3),
   city: z.string().trim().min(2),
+  province: z.string().trim().min(2),
   postalCode: z.string().trim().optional(),
 });
 
