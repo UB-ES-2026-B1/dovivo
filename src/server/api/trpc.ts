@@ -11,8 +11,10 @@ import { initTRPC, TRPCError } from "@trpc/server";
 import superjson from "superjson";
 import { ZodError } from "zod";
 
+import { env } from "~/env";
 import { auth } from "~/server/auth";
 import { db } from "~/server/db";
+import { getClientIp } from "~/server/services/rate-limit";
 
 /**
  * 1. CONTEXT
@@ -32,6 +34,8 @@ export const createTRPCContext = async (opts: { headers: Headers }) => {
   return {
     db,
     session,
+    /** Client IP for rate limiting; `null` when it can't be trusted (see `getClientIp`). */
+    clientIp: getClientIp(opts.headers, env.TRUSTED_PROXY_COUNT),
     ...opts,
   };
 };
@@ -120,14 +124,27 @@ export const publicProcedure = t.procedure.use(timingMiddleware);
  */
 export const protectedProcedure = t.procedure
   .use(timingMiddleware)
-  .use(({ ctx, next }) => {
+  .use(async ({ ctx, next }) => {
     if (!ctx.session?.user) {
+      throw new TRPCError({ code: "UNAUTHORIZED" });
+    }
+    // Sessions are JWTs, which can't be revoked before they expire. Re-check the account on every
+    // protected call so blocking or deleting a user takes effect immediately, and use the current
+    // role from the DB rather than the one copied into the token at sign-in.
+    const user = await ctx.db.user.findUnique({
+      where: { id: ctx.session.user.id },
+      select: { blockedAt: true, role: true },
+    });
+    if (!user || user.blockedAt) {
       throw new TRPCError({ code: "UNAUTHORIZED" });
     }
     return next({
       ctx: {
         // infers the `session` as non-nullable
-        session: { ...ctx.session, user: ctx.session.user },
+        session: {
+          ...ctx.session,
+          user: { ...ctx.session.user, role: user.role },
+        },
       },
     });
   });

@@ -16,6 +16,10 @@ const fakeDb = {
     create: vi.fn(),
     update: vi.fn(),
   },
+  // `protectedProcedure` re-checks that the session user still exists and is not blocked.
+  user: {
+    findUnique: vi.fn(),
+  },
 };
 
 const ownerSession: Session = {
@@ -25,10 +29,12 @@ const ownerSession: Session = {
 
 const makeCaller = (session: Session | null) =>
   createCaller({
-    // The router only touches `db.property`, so a narrow fake is enough. Cast through `unknown`
+    // The router only touches `db.property` (and `db.user` via `protectedProcedure`), so a narrow
+    // fake is enough. Cast through `unknown`
     // because the fake does not implement the whole PrismaClient surface.
     db: fakeDb as unknown as PrismaClient,
     session,
+    clientIp: null,
     headers: new Headers(),
   });
 
@@ -57,6 +63,7 @@ beforeEach(() => {
   vi.resetAllMocks();
   // The timing middleware logs every call; keep the test output clean.
   vi.spyOn(console, "log").mockImplementation(() => undefined);
+  fakeDb.user.findUnique.mockResolvedValue({ blockedAt: null, role: "USER" });
 });
 
 describe("property.byId", () => {
@@ -111,6 +118,40 @@ describe("property.publish", () => {
       makeCaller(ownerSession).property.publish({ id: "prop_1" }),
     ).rejects.toMatchObject({ code: "NOT_FOUND" });
     expect(fakeDb.property.update).not.toHaveBeenCalled();
+  });
+});
+
+describe("protectedProcedure", () => {
+  it("returns UNAUTHORIZED without a session", async () => {
+    await expect(makeCaller(null).property.mine()).rejects.toMatchObject({
+      code: "UNAUTHORIZED",
+    });
+    expect(fakeDb.property.findMany).not.toHaveBeenCalled();
+  });
+
+  it("returns UNAUTHORIZED when the session user is blocked", async () => {
+    fakeDb.user.findUnique.mockResolvedValue({
+      blockedAt: new Date(),
+      role: "USER",
+    });
+
+    await expect(
+      makeCaller(ownerSession).property.mine(),
+    ).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+    expect(fakeDb.user.findUnique).toHaveBeenCalledWith({
+      where: { id: "owner_1" },
+      select: { blockedAt: true, role: true },
+    });
+    expect(fakeDb.property.findMany).not.toHaveBeenCalled();
+  });
+
+  it("returns UNAUTHORIZED when the session user no longer exists", async () => {
+    fakeDb.user.findUnique.mockResolvedValue(null);
+
+    await expect(
+      makeCaller(ownerSession).property.mine(),
+    ).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+    expect(fakeDb.property.findMany).not.toHaveBeenCalled();
   });
 });
 

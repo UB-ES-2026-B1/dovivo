@@ -241,9 +241,10 @@ pnpm db:migrate              # applies migrations to your local DB
 pnpm dev                     # http://localhost:3000
 ```
 
-**Signing in locally:** login providers are only enabled when their credentials are set. To
-test auth, create a Discord app (see the comments in `.env.example`) and fill
-`AUTH_DISCORD_ID` / `AUTH_DISCORD_SECRET`. More providers (Google, GitHub, email) can be added in
+**Signing in locally:** email + password accounts work out of the box. Create one with the
+`auth.signUp` procedure (or the sign-up page once it exists) and sign in at `/api/auth/signin`
+until the `/login` page ships. Discord login is optional: create a Discord app (see the comments
+in `.env.example`) and fill `AUTH_DISCORD_ID` / `AUTH_DISCORD_SECRET`. Providers are configured in
 `src/server/auth/config.ts`.
 
 ## Running everything with Docker
@@ -321,6 +322,7 @@ Defined and validated in `src/env.js`. Documented in `.env.example`.
 | `AUTH_SECRET`         | yes in production | Auth.js encryption secret (`npx auth secret`)   |
 | `AUTH_DISCORD_ID`     | no                | Discord OAuth client id (enables Discord login) |
 | `AUTH_DISCORD_SECRET` | no                | Discord OAuth client secret                     |
+| `TRUSTED_PROXY_COUNT` | no (default `0`)  | Reverse proxies in front of the app; used to read the client IP for sign-up / sign-in rate limits |
 
 To add a variable, put it in `.env.example` and in `src/env.js`, and in `docker-compose.yml` if the container needs it.
 
