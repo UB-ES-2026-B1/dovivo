@@ -10,6 +10,7 @@ Built with the [T3 Stack](https://create.t3.gg/) (bootstrapped with `create-t3-a
 
 - [Tech stack](#tech-stack)
 - [Architecture](#architecture)
+- [Documentation](#documentation)
 - [Project structure](#project-structure)
 - [Prerequisites](#prerequisites) (per OS)
 - [Getting started](#getting-started)
@@ -86,6 +87,16 @@ User 1─* Property 1─* PropertyImage
 
 **Deployment shape (Docker)**: `db` (Postgres) → `migrate` (one-shot `prisma migrate deploy`) →
 `app` (Next.js standalone server, non-root, healthcheck on `/api/health`).
+
+## Documentation
+
+Design docs (index in [`docs/`](./docs/README.md)):
+
+- [Backend contract](./dovivo_backend_contract.pdf) (Catalan): **source of truth** for the
+  data model, the tRPC procedures per sprint and the T-07/T-09 spikes.
+- [API usage notes](./docs/api.md): how to call the tRPC API, error codes and auth flows.
+- [Architecture Decision Records](./docs/adr/): architecture (0001), authentication (0002),
+  chat and chatbot (0003).
 
 ## Project structure
 
