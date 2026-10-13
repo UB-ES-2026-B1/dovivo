@@ -7,7 +7,7 @@ export const metadata: Metadata = { title: "Publish a property" };
 
 export default async function PublishPage() {
   const session = await auth();
-  if (!session) redirect("/api/auth/signin?callbackUrl=/publish");
+  if (!session) redirect("/login?callbackUrl=/publish");
 
   // TODO(frontend): multi-step form using `createPropertySchema` from
   // ~/lib/validators/property and the `property.create` + `property.publish` mutations.

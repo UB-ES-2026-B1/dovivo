@@ -36,7 +36,7 @@ export async function SiteHeader() {
             </Link>
           )}
           <Link
-            href={session ? "/api/auth/signout" : "/api/auth/signin"}
+            href={session ? "/api/auth/signout" : "/login"}
             className="rounded-full bg-emerald-700 px-4 py-2 text-white hover:bg-emerald-800"
           >
             {session ? "Sign out" : "Sign in"}

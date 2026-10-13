@@ -78,6 +78,8 @@ export const authConfig = {
   // default options, ours adds a global `omit` (it never needs `passwordHash`).
   adapter: PrismaAdapter(db as unknown as PrismaClient),
   session: { strategy: "jwt" },
+  // Send Auth.js's own sign-in redirects to our page instead of its default one.
+  pages: { signIn: "/login" },
   callbacks: {
     signIn: signInCallback,
     jwt: jwtCallback,

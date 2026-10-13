@@ -25,9 +25,8 @@ export default async function RegisterPage({ searchParams }: Props) {
       <RegisterForm callbackUrl={callbackUrl} />
       <p className="mt-6 text-sm text-slate-600">
         Already have an account?{" "}
-        {/* TODO(US-02): point to `/login` once that page exists. */}
         <Link
-          href={`/api/auth/signin?callbackUrl=${encodeURIComponent(callbackUrl)}`}
+          href={`/login?callbackUrl=${encodeURIComponent(callbackUrl)}`}
           className="font-medium text-emerald-700 hover:underline"
         >
           Sign in
