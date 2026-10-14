@@ -51,9 +51,8 @@ export const propertyRouter = createTRPCRouter({
           deletedAt: null,
           listingType: filters.listingType,
           propertyType: filters.propertyType,
-          city: filters.city
-            ? { equals: filters.city, mode: "insensitive" }
-            : undefined,
+          // `city` is citext, so a plain equals is case-insensitive and uses the index.
+          city: filters.city,
           bedrooms: filters.minBedrooms
             ? { gte: filters.minBedrooms }
             : undefined,
