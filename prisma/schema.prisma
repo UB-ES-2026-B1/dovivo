@@ -141,6 +141,9 @@ model PropertyImage {
   propertyId   String
   createdAt    DateTime @default(now())
 
+  // Not DEFERRABLE (Prisma can't express it), so swapping two positions directly fails with P2002.
+  // To reorder, in one transaction: move the affected images to temporary negative positions
+  // (-1, -2, ...), then write the final ones.
   @@unique([propertyId, position])
 }
 
