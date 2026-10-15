@@ -16,6 +16,9 @@ datasource db {
 
 // ─────────────────────────────────────────────────────────────
 // dovivo domain
+// Target schema for the MVP: see dovivo_backend_contract.pdf (sections 1-6).
+// Constraints Prisma can't express (partial unique index, CHECK) are added by hand in the
+// migration SQL.
 // ─────────────────────────────────────────────────────────────
 
 enum UserRole {
@@ -46,6 +49,27 @@ enum ListingStatus {
   CLOSED // sold / rented
 }
 
+enum ReportReason {
+  FRAUD
+  WRONG_INFO
+  DUPLICATE
+  NOT_AVAILABLE
+  OFFENSIVE
+  OTHER
+}
+
+enum ReportStatus {
+  PENDING
+  RESOLVED
+  DISMISSED
+}
+
+enum ContactStatus {
+  OPEN
+  ANSWERED
+  CLOSED
+}
+
 model Property {
   id           String        @id @default(cuid())
   title        String
@@ -61,16 +85,26 @@ model Property {
   bedrooms  Int?
   bathrooms Int?
   areaM2    Int?
+  floor     String? // free text: "baixos", "3", "àtic"
 
-  address    String
-  city       String
-  postalCode String?
-  country    String  @default("ES")
-  latitude   Float?
-  longitude  Float?
+  address      String
+  neighborhood String?
+  // citext: case-insensitive equality that can still use the city index.
+  city         String  @db.Citext
+  province     String
+  postalCode   String?
+  country      String  @default("ES")
+  latitude     Float?
+  longitude    Float?
 
-  images     PropertyImage[]
-  favourites Favourite[]
+  hasElevator Boolean @default(false)
+  hasParking  Boolean @default(false)
+  isFurnished Boolean @default(false)
+
+  images        PropertyImage[]
+  favourites    Favourite[]
+  conversations Conversation[]
+  reports       Report[]
 
   owner   User   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   ownerId String
@@ -78,20 +112,43 @@ model Property {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   publishedAt DateTime?
+  // Soft delete (US-19): hidden from search, kept for favourites and chats.
+  deletedAt   DateTime?
 
-  @@index([listingType, status, city])
+  // Target of Conversation's composite FK, so advertiserId always matches ownerId.
+  @@unique([id, ownerId])
+  @@index([status, listingType, propertyType])
+  @@index([status, priceCents])
+  @@index([city])
+  @@index([province])
+  @@index([postalCode])
+  @@index([neighborhood])
+  @@index([latitude, longitude])
+  // Default search order (`list`): PUBLISHED listings, newest first, `id` as tie-breaker.
+  @@index([status, publishedAt(sort: Desc), id(sort: Desc)])
   @@index([ownerId])
 }
 
 model PropertyImage {
-  id         String   @id @default(cuid())
-  url        String
-  alt        String?
-  position   Int      @default(0)
-  property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
-  propertyId String
+  id           String   @id @default(cuid())
+  url          String // key or URL of the original in the image storage
+  thumbnailUrl String?
+  alt          String?
+  mimeType     String // image/jpeg | image/png (validated with zod)
+  sizeBytes    Int // max 5 MB
+  width        Int?
+  height       Int?
+  position     Int      @default(0) // gallery order, 0-14
+  // At most one cover per property: partial unique index added by hand in the migration.
+  isCover      Boolean  @default(false)
+  property     Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  propertyId   String
+  createdAt    DateTime @default(now())
 
-  @@index([propertyId])
+  // Not DEFERRABLE (Prisma can't express it), so swapping two positions directly fails with P2002.
+  // To reorder, in one transaction: move the affected images to temporary negative positions
+  // (-1, -2, ...), then write the final ones.
+  @@unique([propertyId, position])
 }
 
 model Favourite {
@@ -102,6 +159,129 @@ model Favourite {
   createdAt  DateTime @default(now())
 
   @@id([userId, propertyId])
+  @@index([propertyId])
+}
+
+/// One thread per property and interested user (US-21, US-22).
+/// interestedUserId <> advertiserId is enforced by a CHECK added by hand in the migration.
+model Conversation {
+  id               String    @id @default(cuid())
+  // Composite FK to (Property.id, Property.ownerId): advertiserId can't drift from the owner.
+  property         Property  @relation(fields: [propertyId, advertiserId], references: [id, ownerId], onDelete: Cascade, onUpdate: Cascade)
+  propertyId       String
+  interestedUser   User      @relation("ConversationInterested", fields: [interestedUserId], references: [id], onDelete: Cascade)
+  interestedUserId String
+  // Always equal to Property.ownerId (enforced by the composite FK above).
+  advertiser       User      @relation("ConversationAdvertiser", fields: [advertiserId], references: [id], onDelete: Cascade)
+  advertiserId     String
+  lastMessageAt    DateTime?
+  messages         Message[]
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@unique([propertyId, interestedUserId])
+  @@index([advertiserId, lastMessageAt])
+  @@index([interestedUserId, lastMessageAt])
+}
+
+model Message {
+  id             String       @id @default(cuid())
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  conversationId String
+  sender         User         @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  senderId       String
+  body           String
+  readAt         DateTime?
+  createdAt      DateTime     @default(now())
+
+  @@index([conversationId, createdAt])
+  @@index([senderId])
+}
+
+/// A user reports a listing; an admin reviews it (T-05).
+model Report {
+  id             String       @id @default(cuid())
+  property       Property     @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  propertyId     String
+  // Null if the reporter deleted their account: the moderation history is kept.
+  reporter       User?        @relation("ReportReporter", fields: [reporterId], references: [id], onDelete: SetNull)
+  reporterId     String?
+  reason         ReportReason
+  details        String?
+  status         ReportStatus @default(PENDING)
+  resolvedBy     User?        @relation("ReportResolver", fields: [resolvedById], references: [id], onDelete: SetNull)
+  resolvedById   String?
+  resolvedAt     DateTime?
+  resolutionNote String? // internal admin note
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  // NULLs don't collide in PostgreSQL, so reports from deleted users are kept.
+  @@unique([propertyId, reporterId])
+  @@index([status, createdAt])
+  @@index([reporterId])
+  @@index([resolvedById])
+}
+
+/// Default search preferences (US-15). At most one row per user.
+model UserPreference {
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId        String         @id
+  listingType   ListingType?
+  propertyTypes PropertyType[] @default([])
+  minPriceCents Int?
+  maxPriceCents Int?
+  minBedrooms   Int?
+  minAreaM2     Int?
+  city          String?
+  province      String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+}
+
+/// Messages to the dovivo team (US-25), handled by an admin.
+model ContactMessage {
+  id        String        @id @default(cuid())
+  // Null if a visitor wrote it, or if the user deleted their account.
+  user      User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+  userId    String?
+  name      String
+  email     String
+  subject   String
+  message   String
+  status    ContactStatus @default(OPEN)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  @@index([userId])
+}
+
+/// Password recovery for Credentials users (US-08). Only the token hash is stored.
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  tokenHash String   @unique // SHA-256 of the token sent by email
+  expiresAt DateTime // 60 minutes
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+/// Saved searches and alerts (US-16).
+model SavedSearch {
+  id            String    @id @default(cuid())
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId        String
+  name          String
+  // Validate with savedSearchFiltersSchema on write and read (search filters without pagination).
+  filters       Json
+  alertsEnabled Boolean   @default(true)
+  lastAlertedAt DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([userId])
 }
 
 // Necessary for Next auth
@@ -133,16 +313,36 @@ model Session {
 }
 
 model User {
-  id            String      @id @default(cuid())
+  id            String    @id @default(cuid())
   name          String?
-  email         String?     @unique
+  email         String?   @unique
   emailVerified DateTime?
   image         String?
-  accounts      Account[]
-  sessions      Session[]
-  role          UserRole    @default(USER)
-  properties    Property[]
-  favourites    Favourite[]
+  phone         String?
+  // Null if the user only signs in with OAuth. Never store the plain password.
+  passwordHash  String?
+  // If set, an admin blocked the user. Enforced by auth (T-06): sign-in is rejected and
+  // protectedProcedure re-checks it on every call.
+  blockedAt     DateTime?
+  role          UserRole  @default(USER)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  accounts              Account[]
+  sessions              Session[]
+  properties            Property[]
+  favourites            Favourite[]
+  conversationsAsBuyer  Conversation[]       @relation("ConversationInterested")
+  conversationsAsSeller Conversation[]       @relation("ConversationAdvertiser")
+  messages              Message[]
+  reportsMade           Report[]             @relation("ReportReporter")
+  reportsResolved       Report[]             @relation("ReportResolver")
+  preference            UserPreference?
+  contactMessages       ContactMessage[]
+  passwordResetTokens   PasswordResetToken[]
+  savedSearches         SavedSearch[]
+
+  @@index([role])
 }
 
 model VerificationToken {
