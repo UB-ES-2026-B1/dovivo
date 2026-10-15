@@ -18,6 +18,7 @@ const fakeDb = {
     update: vi.fn(),
     updateMany: vi.fn(),
   },
+  // `protectedProcedure` re-checks that the session user still exists and is not blocked.
 };
 
 const ownerSession: Session = {
@@ -27,10 +28,12 @@ const ownerSession: Session = {
 
 const makeCaller = (session: Session | null) =>
   createCaller({
-    // The router only touches `db.property`, so a narrow fake is enough. Cast through `unknown`
+    // The router only touches `db.property` (and `db.user` via `protectedProcedure`), so a narrow
+    // fake is enough. Cast through `unknown`
     // because the fake does not implement the whole PrismaClient surface.
     db: fakeDb as unknown as PrismaClient,
     session,
+    clientIp: null,
     headers: new Headers(),
   });
 
@@ -157,6 +160,15 @@ describe("property.publish", () => {
       makeCaller(ownerSession).property.publish({ id: "prop_1" }),
     ).rejects.toMatchObject({ code: "CONFLICT" });
     expect(fakeDb.property.findUniqueOrThrow).not.toHaveBeenCalled();
+  });
+});
+
+describe("protectedProcedure", () => {
+  it("returns UNAUTHORIZED without a session", async () => {
+    await expect(makeCaller(null).property.mine()).rejects.toMatchObject({
+      code: "UNAUTHORIZED",
+    });
+    expect(fakeDb.property.findMany).not.toHaveBeenCalled();
   });
 });
 
