@@ -10,7 +10,7 @@ import DiscordProvider from "next-auth/providers/discord";
 import { env } from "~/env";
 import {
   createAuthorize,
-  jwtCallback,
+  createJwtCallback,
   sessionCallback,
   signInCallback,
 } from "~/server/auth/callbacks";
@@ -80,7 +80,7 @@ export const authConfig = {
   session: { strategy: "jwt" },
   callbacks: {
     signIn: signInCallback,
-    jwt: jwtCallback,
+    jwt: createJwtCallback({ db }),
     session: sessionCallback,
   },
 } satisfies NextAuthConfig;

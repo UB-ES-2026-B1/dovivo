@@ -19,9 +19,6 @@ const fakeDb = {
     updateMany: vi.fn(),
   },
   // `protectedProcedure` re-checks that the session user still exists and is not blocked.
-  user: {
-    findUnique: vi.fn(),
-  },
 };
 
 const ownerSession: Session = {
@@ -65,7 +62,6 @@ beforeEach(() => {
   vi.resetAllMocks();
   // The timing middleware logs every call; keep the test output clean.
   vi.spyOn(console, "log").mockImplementation(() => undefined);
-  fakeDb.user.findUnique.mockResolvedValue({ blockedAt: null, role: "USER" });
 });
 
 describe("property.byId", () => {
@@ -172,31 +168,6 @@ describe("protectedProcedure", () => {
     await expect(makeCaller(null).property.mine()).rejects.toMatchObject({
       code: "UNAUTHORIZED",
     });
-    expect(fakeDb.property.findMany).not.toHaveBeenCalled();
-  });
-
-  it("returns UNAUTHORIZED when the session user is blocked", async () => {
-    fakeDb.user.findUnique.mockResolvedValue({
-      blockedAt: new Date(),
-      role: "USER",
-    });
-
-    await expect(
-      makeCaller(ownerSession).property.mine(),
-    ).rejects.toMatchObject({ code: "UNAUTHORIZED" });
-    expect(fakeDb.user.findUnique).toHaveBeenCalledWith({
-      where: { id: "owner_1" },
-      select: { blockedAt: true, role: true },
-    });
-    expect(fakeDb.property.findMany).not.toHaveBeenCalled();
-  });
-
-  it("returns UNAUTHORIZED when the session user no longer exists", async () => {
-    fakeDb.user.findUnique.mockResolvedValue(null);
-
-    await expect(
-      makeCaller(ownerSession).property.mine(),
-    ).rejects.toMatchObject({ code: "UNAUTHORIZED" });
     expect(fakeDb.property.findMany).not.toHaveBeenCalled();
   });
 });

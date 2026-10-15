@@ -315,14 +315,15 @@ model Session {
 model User {
   id            String    @id @default(cuid())
   name          String?
-  email         String?   @unique
+  // citext: unique regardless of case, also for OAuth emails we don't lowercase ourselves.
+  email         String?   @unique @db.Citext
   emailVerified DateTime?
   image         String?
   phone         String?
   // Null if the user only signs in with OAuth. Never store the plain password.
   passwordHash  String?
-  // If set, an admin blocked the user. Enforced by auth (T-06): sign-in is rejected and
-  // protectedProcedure re-checks it on every call.
+  // If set, an admin blocked the user. Enforced by auth (T-06): sign-in is rejected and the
+  // Auth.js jwt callback re-checks it on every request, dropping open sessions.
   blockedAt     DateTime?
   role          UserRole  @default(USER)
   createdAt     DateTime  @default(now())
