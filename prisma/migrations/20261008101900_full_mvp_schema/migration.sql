@@ -213,6 +213,16 @@ CREATE INDEX "Property_latitude_longitude_idx" ON "Property"("latitude", "longit
 -- CreateIndex
 CREATE INDEX "Property_publishedAt_idx" ON "Property"("publishedAt");
 
+-- Edited by hand: `position` used to default to 0, so existing images can share a position. Renumber
+-- each listing's gallery to 0..n-1 (keeping the current order) before adding the unique index.
+UPDATE "PropertyImage" AS img
+SET "position" = ranked."rowNumber" - 1
+FROM (
+    SELECT "id", ROW_NUMBER() OVER (PARTITION BY "propertyId" ORDER BY "position", "id") AS "rowNumber"
+    FROM "PropertyImage"
+) AS ranked
+WHERE img."id" = ranked."id";
+
 -- CreateIndex
 CREATE UNIQUE INDEX "PropertyImage_propertyId_position_key" ON "PropertyImage"("propertyId", "position");
 

@@ -13,8 +13,10 @@ const fakeDb = {
   property: {
     findMany: vi.fn(),
     findUnique: vi.fn(),
+    findUniqueOrThrow: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
+    updateMany: vi.fn(),
   },
   // `protectedProcedure` re-checks that the session user still exists and is not blocked.
   user: {
@@ -108,7 +110,27 @@ describe("property.byId", () => {
 });
 
 describe("property.publish", () => {
+  it("publishes a draft atomically, scoped to its owner", async () => {
+    fakeDb.property.updateMany.mockResolvedValue({ count: 1 });
+    fakeDb.property.findUniqueOrThrow.mockResolvedValue(baseProperty);
+
+    await expect(
+      makeCaller(ownerSession).property.publish({ id: "prop_1" }),
+    ).resolves.toEqual(baseProperty);
+
+    expect(fakeDb.property.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: "prop_1",
+        ownerId: "owner_1",
+        deletedAt: null,
+        status: "DRAFT",
+      },
+      data: { status: "PUBLISHED", publishedAt: expect.any(Date) as Date },
+    });
+  });
+
   it("returns NOT_FOUND for a soft-deleted listing", async () => {
+    fakeDb.property.updateMany.mockResolvedValue({ count: 0 });
     fakeDb.property.findUnique.mockResolvedValue({
       ownerId: "owner_1",
       deletedAt: new Date(),
@@ -117,7 +139,31 @@ describe("property.publish", () => {
     await expect(
       makeCaller(ownerSession).property.publish({ id: "prop_1" }),
     ).rejects.toMatchObject({ code: "NOT_FOUND" });
-    expect(fakeDb.property.update).not.toHaveBeenCalled();
+  });
+
+  it("returns FORBIDDEN when the listing belongs to someone else", async () => {
+    fakeDb.property.updateMany.mockResolvedValue({ count: 0 });
+    fakeDb.property.findUnique.mockResolvedValue({
+      ownerId: "other_user",
+      deletedAt: null,
+    });
+
+    await expect(
+      makeCaller(ownerSession).property.publish({ id: "prop_1" }),
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+
+  it("returns CONFLICT when the listing is not a draft", async () => {
+    fakeDb.property.updateMany.mockResolvedValue({ count: 0 });
+    fakeDb.property.findUnique.mockResolvedValue({
+      ownerId: "owner_1",
+      deletedAt: null,
+    });
+
+    await expect(
+      makeCaller(ownerSession).property.publish({ id: "prop_1" }),
+    ).rejects.toMatchObject({ code: "CONFLICT" });
+    expect(fakeDb.property.findUniqueOrThrow).not.toHaveBeenCalled();
   });
 });
 
