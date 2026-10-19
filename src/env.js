@@ -15,6 +15,8 @@ export const env = createEnv({
     AUTH_DISCORD_ID: z.string().optional(),
     AUTH_DISCORD_SECRET: z.string().optional(),
     DATABASE_URL: z.string().url(),
+    // Number of reverse proxies in front of the app; used to read the client IP for rate limiting.
+    TRUSTED_PROXY_COUNT: z.coerce.number().int().min(0).default(0),
     NODE_ENV: z
       .enum(["development", "test", "production"])
       .default("development"),
@@ -38,6 +40,7 @@ export const env = createEnv({
     AUTH_DISCORD_ID: process.env.AUTH_DISCORD_ID,
     AUTH_DISCORD_SECRET: process.env.AUTH_DISCORD_SECRET,
     DATABASE_URL: process.env.DATABASE_URL,
+    TRUSTED_PROXY_COUNT: process.env.TRUSTED_PROXY_COUNT,
     NODE_ENV: process.env.NODE_ENV,
   },
   /**

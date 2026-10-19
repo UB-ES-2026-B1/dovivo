@@ -31,6 +31,7 @@ const makeCaller = (session: Session | null) =>
     // because the fake does not implement the whole PrismaClient surface.
     db: fakeDb as unknown as PrismaClient,
     session,
+    clientIp: null,
     headers: new Headers(),
   });
 
@@ -157,6 +158,15 @@ describe("property.publish", () => {
       makeCaller(ownerSession).property.publish({ id: "prop_1" }),
     ).rejects.toMatchObject({ code: "CONFLICT" });
     expect(fakeDb.property.findUniqueOrThrow).not.toHaveBeenCalled();
+  });
+});
+
+describe("protectedProcedure", () => {
+  it("returns UNAUTHORIZED without a session", async () => {
+    await expect(makeCaller(null).property.mine()).rejects.toMatchObject({
+      code: "UNAUTHORIZED",
+    });
+    expect(fakeDb.property.findMany).not.toHaveBeenCalled();
   });
 });
 
