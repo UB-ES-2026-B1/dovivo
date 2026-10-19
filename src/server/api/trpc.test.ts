@@ -10,7 +10,8 @@ import { type AppPrismaClient } from "~/server/db-omit";
 
 /**
  * Tests for the `protectedProcedure` middleware itself, through a tiny router that echoes the
- * session user it receives in its context.
+ * session user it receives in its context. Blocked / deleted users are dropped earlier, by the
+ * Auth.js `jwt` callback (see `src/server/auth/callbacks.test.ts`).
  */
 
 const testRouter = createTRPCRouter({
@@ -25,11 +26,11 @@ const session: Session = {
   expires: new Date(Date.now() + 60_000).toISOString(),
 };
 
-const makeCaller = () =>
+const makeCaller = (currentSession: Session | null) =>
   createTestCaller({
     // Cast through `unknown` because the fake does not implement the whole PrismaClient surface.
     db: fakeDb as unknown as AppPrismaClient,
-    session,
+    session: currentSession,
     clientIp: null,
     headers: new Headers(),
   });
@@ -40,29 +41,16 @@ beforeEach(() => {
 });
 
 describe("protectedProcedure", () => {
-  it("passes the current role from the DB, not the one in the token", async () => {
-    // The token still says USER, but the user was promoted since signing in.
-    fakeDb.user.findUnique.mockResolvedValue({
-      blockedAt: null,
-      role: "ADMIN",
-    });
-
-    const user = await makeCaller().whoAmI();
-
-    expect(user).toEqual({ id: "user_1", role: "ADMIN" });
-    expect(fakeDb.user.findUnique).toHaveBeenCalledWith({
-      where: { id: "user_1" },
-      select: { blockedAt: true, role: true },
-    });
-  });
-
-  it("returns UNAUTHORIZED for a blocked user", async () => {
-    fakeDb.user.findUnique.mockResolvedValue({
-      blockedAt: new Date(),
+  it("passes the session user on, without another DB lookup", async () => {
+    expect(await makeCaller(session).whoAmI()).toEqual({
+      id: "user_1",
       role: "USER",
     });
+    expect(fakeDb.user.findUnique).not.toHaveBeenCalled();
+  });
 
-    await expect(makeCaller().whoAmI()).rejects.toMatchObject({
+  it("returns UNAUTHORIZED without a session", async () => {
+    await expect(makeCaller(null).whoAmI()).rejects.toMatchObject({
       code: "UNAUTHORIZED",
     });
   });

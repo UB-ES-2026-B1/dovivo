@@ -10,7 +10,7 @@ import {
 
 import {
   createAuthorize,
-  jwtCallback,
+  createJwtCallback,
   RateLimitedSignin,
   sessionCallback,
   signInCallback,
@@ -100,6 +100,28 @@ describe("createAuthorize", () => {
     expect(fakeDb.user.findUnique).not.toHaveBeenCalled();
   });
 
+  it("only counts failed attempts towards the limits", async () => {
+    limiters.perEmail = createRateLimiter({ limit: 1, windowMs: 60_000 });
+    fakeDb.user.findUnique.mockResolvedValue({
+      id: "user_1",
+      name: "Ada",
+      email: "ada@example.com",
+      image: null,
+      role: "USER",
+      passwordHash,
+      blockedAt: null,
+    });
+    const signIn = (password: string) =>
+      authorize()({ email: "ada@example.com", password }, request());
+
+    // Signing in correctly again and again never uses up the single allowed attempt...
+    await expect(signIn(PASSWORD)).resolves.toMatchObject({ id: "user_1" });
+    await expect(signIn(PASSWORD)).resolves.toMatchObject({ id: "user_1" });
+    // ...but a wrong password does.
+    await expect(signIn("wrong password")).resolves.toBeNull();
+    await expect(signIn(PASSWORD)).rejects.toBeInstanceOf(RateLimitedSignin);
+  });
+
   it("rate-limits by the client IP resolved with TRUSTED_PROXY_COUNT", async () => {
     limiters.perIp = createRateLimiter({ limit: 1, windowMs: 60_000 });
     limiters.perIp.check("203.0.113.7"); // the real client already used its only attempt
@@ -114,11 +136,13 @@ describe("createAuthorize", () => {
   });
 });
 
-describe("jwtCallback", () => {
+describe("createJwtCallback", () => {
+  const jwtCallback = createJwtCallback({ db });
   // At sign-in the token doesn't have `id` / `role` yet; the callback adds them.
   const freshToken = { sub: "user_1", email: "ada@example.com" } as JWT;
+  const signedInToken = { ...freshToken, id: "user_1", role: "USER" } as JWT;
 
-  it("copies id and role from a Credentials user (returned by authorize)", () => {
+  it("copies id and role from a Credentials user (returned by authorize)", async () => {
     const user = {
       id: "user_1",
       name: "Ada",
@@ -126,14 +150,15 @@ describe("jwtCallback", () => {
       image: null,
       role: "USER",
     };
-    expect(jwtCallback({ token: freshToken, user })).toEqual({
+    expect(await jwtCallback({ token: freshToken, user })).toEqual({
       ...freshToken,
       id: "user_1",
       role: "USER",
     });
+    expect(fakeDb.user.findUnique).not.toHaveBeenCalled();
   });
 
-  it("copies id and role from an OAuth user (DB row from the adapter)", () => {
+  it("copies id and role from an OAuth user (DB row from the adapter)", async () => {
     const user = {
       id: "user_2",
       name: "Grace",
@@ -146,20 +171,56 @@ describe("jwtCallback", () => {
       createdAt: new Date(),
       updatedAt: new Date(),
     };
-    expect(jwtCallback({ token: freshToken, user })).toMatchObject({
+    expect(await jwtCallback({ token: freshToken, user })).toMatchObject({
       id: "user_2",
       role: "AGENT",
     });
   });
 
-  it("returns the token unchanged when there is no user (later requests)", () => {
-    const token = { ...freshToken, id: "user_1", role: "ADMIN" } as JWT;
-    expect(jwtCallback({ token })).toBe(token);
+  it("refuses a user without a valid role", async () => {
+    const user = { id: "user_1", role: "SUPERUSER" };
+    await expect(jwtCallback({ token: freshToken, user })).rejects.toThrow();
   });
 
-  it("refuses a user without a valid role", () => {
-    const user = { id: "user_1", role: "SUPERUSER" };
-    expect(() => jwtCallback({ token: freshToken, user })).toThrow();
+  it("keeps the token on later requests while the account is fine", async () => {
+    fakeDb.user.findUnique.mockResolvedValue({ blockedAt: null, role: "USER" });
+
+    expect(await jwtCallback({ token: signedInToken })).toBe(signedInToken);
+    expect(fakeDb.user.findUnique).toHaveBeenCalledWith({
+      where: { id: "user_1" },
+      select: { blockedAt: true, role: true },
+    });
+  });
+
+  it("refreshes the role from the DB", async () => {
+    // The token still says USER, but the user was promoted since signing in.
+    fakeDb.user.findUnique.mockResolvedValue({
+      blockedAt: null,
+      role: "ADMIN",
+    });
+
+    expect(await jwtCallback({ token: signedInToken })).toEqual({
+      ...signedInToken,
+      role: "ADMIN",
+    });
+  });
+
+  it("ends the session of a user blocked after signing in", async () => {
+    fakeDb.user.findUnique.mockResolvedValue({
+      blockedAt: new Date(),
+      role: "USER",
+    });
+    expect(await jwtCallback({ token: signedInToken })).toBeNull();
+  });
+
+  it("ends the session of a deleted user", async () => {
+    fakeDb.user.findUnique.mockResolvedValue(null);
+    expect(await jwtCallback({ token: signedInToken })).toBeNull();
+  });
+
+  it("ends a session whose token has no id", async () => {
+    expect(await jwtCallback({ token: freshToken })).toBeNull();
+    expect(fakeDb.user.findUnique).not.toHaveBeenCalled();
   });
 });
 

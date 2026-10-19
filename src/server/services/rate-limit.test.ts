@@ -5,6 +5,7 @@ import {
   createRateLimiter,
   createSignInLimiters,
   getClientIp,
+  refundSignInAttempt,
   SIGN_IN_PER_EMAIL_LIMIT,
   SIGN_IN_PER_IP_LIMIT,
   SIGN_IN_WINDOW_MS,
@@ -85,6 +86,34 @@ describe("createRateLimiter", () => {
     limiter.reset();
     expect(limiter.check("a").allowed).toBe(true);
   });
+
+  it("refund() hands back one call in the current window", () => {
+    const limiter = createRateLimiter({ limit: 1, windowMs: 1000 });
+
+    expect(limiter.check("a").allowed).toBe(true);
+    limiter.refund("a");
+    expect(limiter.check("a").allowed).toBe(true);
+    expect(limiter.check("a").allowed).toBe(false);
+  });
+
+  it("refund() never goes below zero or carries over to the next window", () => {
+    const clock = makeClock();
+    const limiter = createRateLimiter({
+      limit: 1,
+      windowMs: 1000,
+      now: clock.now,
+    });
+
+    limiter.refund("a"); // nothing counted yet
+    limiter.refund("a");
+    expect(limiter.check("a").allowed).toBe(true);
+    expect(limiter.check("a").allowed).toBe(false);
+
+    clock.advance(1000);
+    limiter.refund("a"); // the old window is over
+    expect(limiter.check("a").allowed).toBe(true);
+    expect(limiter.check("a").allowed).toBe(false);
+  });
 });
 
 describe("checkSignInRateLimit", () => {
@@ -154,6 +183,21 @@ describe("checkSignInRateLimit", () => {
     }
   });
 
+  it("successful attempts handed back with refundSignInAttempt don't count", () => {
+    const limiters = createSignInLimiters();
+    const attempt = { ip: "203.0.113.7", email: "ada@example.com" };
+    // Far more sign-ins than either limit, all successful: e.g. one user, or a shared network.
+    for (let i = 0; i < SIGN_IN_PER_IP_LIMIT * 2; i++) {
+      expect(checkSignInRateLimit(limiters, attempt)).toBe(true);
+      refundSignInAttempt(limiters, attempt);
+    }
+    // Failures still count.
+    for (let i = 0; i < SIGN_IN_PER_EMAIL_LIMIT; i++) {
+      expect(checkSignInRateLimit(limiters, attempt)).toBe(true);
+    }
+    expect(checkSignInRateLimit(limiters, attempt)).toBe(false);
+  });
+
   it("allows attempts again after the window", () => {
     const clock = makeClock();
     const limiters = createSignInLimiters(clock.now);
@@ -171,12 +215,12 @@ describe("checkSignInRateLimit", () => {
 describe("getClientIp", () => {
   const xff = (value: string) => new Headers({ "x-forwarded-for": value });
 
-  it("with no trusted proxy, uses the rightmost X-Forwarded-For entry", () => {
-    // What Next.js sets from the socket when the client sent no header.
-    expect(getClientIp(xff("203.0.113.7"), 0)).toBe("203.0.113.7");
-    // A client-sent header can't be told apart from a real one without a proxy; at least the
-    // forged left-hand entries are ignored.
-    expect(getClientIp(xff("1.1.1.1, 203.0.113.7"), 0)).toBe("203.0.113.7");
+  it("with no trusted proxy, ignores forwarding headers (the client controls them)", () => {
+    expect(getClientIp(xff("203.0.113.7"), 0)).toBeNull();
+    expect(getClientIp(xff("1.1.1.1, 203.0.113.7"), 0)).toBeNull();
+    expect(
+      getClientIp(new Headers({ "x-real-ip": "203.0.113.7" }), 0),
+    ).toBeNull();
   });
 
   it("with one proxy, picks the address that proxy appended, not a forged one", () => {
@@ -199,10 +243,11 @@ describe("getClientIp", () => {
     expect(getClientIp(xff("203.0.113.7, "), 1)).toBeNull();
   });
 
-  it("falls back to X-Real-IP only without X-Forwarded-For, else null", () => {
-    expect(getClientIp(new Headers({ "x-real-ip": " 198.51.100.1 " }), 0)).toBe(
-      "198.51.100.1",
-    );
+  it("never uses X-Real-IP", () => {
+    // Behind a proxy, a request without X-Forwarded-For didn't come through it.
+    expect(
+      getClientIp(new Headers({ "x-real-ip": "198.51.100.1" }), 1),
+    ).toBeNull();
     expect(
       getClientIp(
         new Headers({
@@ -212,6 +257,5 @@ describe("getClientIp", () => {
         1,
       ),
     ).toBe("203.0.113.7");
-    expect(getClientIp(new Headers(), 0)).toBeNull();
   });
 });
