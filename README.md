@@ -325,8 +325,22 @@ Defined and validated in `src/env.js`. Documented in `.env.example`.
 To add a variable, put it in `.env.example` and in `src/env.js`, and in `docker-compose.yml` if the container needs it.
 
 ## Team workflow & AI agents
+**Branching strategy**
 
-- Branch from `main` → small PR → CI must be green → review → squash merge.
+```mermaid
+flowchart LR
+    F["feat/… · fix/… · docs/… · chore/…"] -- "PR + review + CI green" --> D["development"]
+    D -- "release PR at the end of each sprint" --> M["main (protected)"]
+```
+
+| Branch | Purpose | Rules |
+| --- | --- | --- |
+| `main` | Stable branch used for demos and releases | Never touched directly. Protected. It only receives the release PR from `development` at the end of each sprint. |
+| `development` | Integration branch | Every task branch starts here and every PR targets it. |
+| `feat/…`, `fix/…`, `docs/…`, `chore/…` | One short-lived branch per task | Branch from `development`, open a small PR back, delete the branch after merging. |
+
+Flow: branch from `development` → small PR (the PR template loads automatically) → CI green → review by at least one other teammate → merge into `development`. Nobody merges their own PR. Mention the task in the PR title, e.g. `(T-01)` or `(US-02)`.
+
 - Conventional commits: `feat:`, `fix:`, `docs:`, `test:`, `refactor:`, `chore:`.
 - CI (`.github/workflows/ci.yml`) runs format, lint, typecheck, tests and build on **Ubuntu,
   Windows and macOS**, and builds the Docker image.
