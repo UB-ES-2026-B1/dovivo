@@ -27,6 +27,14 @@ export async function SiteHeader() {
               {item.label}
             </Link>
           ))}
+          {!session && (
+            <Link
+              href="/register"
+              className="text-slate-700 hover:text-emerald-700"
+            >
+              Create account
+            </Link>
+          )}
           <Link
             href={session ? "/api/auth/signout" : "/api/auth/signin"}
             className="rounded-full bg-emerald-700 px-4 py-2 text-white hover:bg-emerald-800"
