@@ -33,10 +33,18 @@ export function LoginForm({ callbackUrl }: { callbackUrl: string }) {
 
     // 2. Ask Auth.js to check the credentials. Not tRPC: see docs/api.md.
     setIsPending(true);
-    const res = await signIn("credentials", {
-      ...parsed.data,
-      redirect: false,
-    });
+    let res: Awaited<ReturnType<typeof signIn>>;
+    try {
+      res = await signIn("credentials", {
+        ...parsed.data,
+        redirect: false,
+      });
+    } catch {
+      // Network error or Auth.js unreachable: let the user try again.
+      setFormError("Something went wrong. Please try again.");
+      setIsPending(false);
+      return;
+    }
 
     // 3. Errors are generic on purpose: never say whether the email exists.
     if (res?.code === "rate_limited") {
