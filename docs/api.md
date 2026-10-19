@@ -9,9 +9,6 @@ This page only adds what the frontend needs day to day: how to call the API, how
 from the PO backlog's REST codes, and the auth flows. Background: [ADR 0001](./adr/0001-architecture.md),
 [ADR 0002](./adr/0002-auth.md).
 
-> Status legend: **PR 1** = data-model PR · **PR 2** = credentials-auth PR. Both target
-> `development`; anything else mentioned here is already in `development`.
-
 ## How to call the API
 
 | Where | Import | Example |
@@ -28,13 +25,13 @@ from the PO backlog's REST codes, and the auth flows. Background: [ADR 0001](./a
 - **superjson**: `Date` fields arrive as `Date` objects, not strings.
 - **Money** is always integer cents (`priceCents`). Format in the UI only.
 - Never `fetch("/api/trpc/...")` by hand (AGENTS rule 2).
-- **Role**: `session.user.role` from `auth()` comes from the JWT and can be stale until the
-  next sign-in; use it for UI hints only. Protected procedures check the DB role (ADR 0002).
-- **Listing photos** (PR 1): each image exposes `id`, `url`, `thumbnailUrl`, `alt`, `position`,
+- **Role**: `session.user.role` from `auth()` is refreshed from the DB on every request (the
+  `jwt` callback, ADR 0002), in tRPC and in server components.
+- **Listing photos**: each image exposes `id`, `url`, `thumbnailUrl`, `alt`, `position`,
   `isCover`, `width`, `height`. `property.list` returns one image per listing, the cover
   (`isCover` first, then lowest `position` if none is marked); `property.byId` returns the
   gallery ordered by `position`.
-- **Soft-deleted listings** (PR 1): excluded from `list` and `mine`; `byId` and `publish`
+- **Soft-deleted listings**: excluded from `list` and `mine`; `byId` and `publish`
   answer `NOT_FOUND`, also for the owner.
 
 ## Errors
@@ -46,19 +43,19 @@ responses may still be `200` overall, so **always read `error.data?.code`**, nev
 | PO backlog HTTP code | tRPC code | When | Frontend |
 | --- | --- | --- | --- |
 | 422 | `BAD_REQUEST` (sent as 400) | Input fails the zod schema | `error.data?.zodError?.fieldErrors.<field>` (array of messages); `formErrors` for object-level errors |
-| 401 | `UNAUTHORIZED` | No session, or the user was blocked/deleted (PR 2) | Redirect to `/login?callbackUrl=<current path>` |
+| 401 | `UNAUTHORIZED` | No session, or the user was blocked/deleted (the session is dropped on the next request) | Redirect to `/login?callbackUrl=<current path>` |
 | 403 | `FORBIDDEN` | Signed in but not the owner; messaging your own listing; not an admin | Show "not allowed", hide the action |
 | 404 | `NOT_FOUND` | Missing, soft-deleted (`deletedAt`), or a draft you don't own | `notFound()` in server components / "not found" UI |
-| 409 | `CONFLICT` | Sign-up with an email that already exists (PR 2) | "This email is already registered" on the email field |
-| 429 | `TOO_MANY_REQUESTS` | Sign-up: more than 5 per 15 min from the same IP (PR 2) | "Too many attempts, try again later" |
+| 409 | `CONFLICT` | Sign-up with an email that already exists (case-insensitive) | "This email is already registered" on the email field |
+| 429 | `TOO_MANY_REQUESTS` | Sign-up: more than 5 per 15 min from the same IP (only when the IP is known, see `TRUSTED_PROXY_COUNT`) | "Too many attempts, try again later" |
 | 500 | `INTERNAL_SERVER_ERROR` | Bug / DB down | Generic error message |
 
 Sign-in is **not** tRPC. `signIn("credentials", { …, redirect: false })` returns `res.error`
-plus `res.code` (PR 2):
+plus `res.code`:
 
 | `res.code` | When | UI |
 | --- | --- | --- |
-| `"rate_limited"` | More than 30 attempts / 15 min from the IP, or 10 / 15 min for the email (PO 429) | "Too many attempts, try again later" |
+| `"rate_limited"` | More than 30 failed attempts / 15 min from the IP (only when the IP is known), or 10 failed / 15 min for the email (PO 429). Refused even with the right password until the window ends | "Too many attempts, try again later" |
 | `"credentials"` | Invalid input, unknown email, wrong password, blocked or OAuth-only account (PO 401) | One generic "Invalid email or password" |
 
 A blocked user signing in with OAuth (Discord) gets `AccessDenied` instead.
@@ -87,11 +84,13 @@ signUp.mutate({ name, email, password }); // validated by signUpSchema
 **Sign-in (US-02)**
 
 ```tsx
-const res = await signIn("credentials", { email, password, redirect: false });
+const res = await signIn("credentials", { email, password, redirect: false }); // may throw on network errors
 if (res?.code === "rate_limited") setFormError("Too many attempts, try again later");
 else if (res?.error) setFormError("Invalid email or password"); // generic on purpose
 else { router.push(callbackUrl); router.refresh(); }
 ```
+
+Reference implementations: `src/app/register/register-form.tsx` and `src/app/login/login-form.tsx`.
 
 Password rules for the form: min `PASSWORD_MIN_LENGTH` (8) characters on sign-up and max
 `PASSWORD_MAX_BYTES` (72) **bytes** in UTF-8 (accented letters and emoji count double or more),
@@ -102,9 +101,9 @@ both exported from `src/lib/validators/auth.ts`. Validating with `signUpSchema` 
 JWT revocation gap in ADR 0002).
 
 **Who is signed in**: server side `await auth()`; protected pages do
-`if (!session) redirect("/login?callbackUrl=/publish")`. Only accept `callbackUrl` values that
-start with `/` (no open redirects). Until `/login` exists, use `/api/auth/signin`. Full
-profile data (e.g. `phone`) comes from `user.me` (US-04).
+`if (!session) redirect("/login?callbackUrl=/publish")`. Read `callbackUrl` with
+`safeCallbackUrl` from `~/app/_lib/safe-callback-url` (same-origin paths only, no open
+redirects); never check it by hand with `startsWith("/")`. Full profile data (e.g. `phone`) comes from `user.me` (US-04).
 
 ## Open points
 

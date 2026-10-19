@@ -252,10 +252,10 @@ pnpm db:migrate              # applies migrations to your local DB
 pnpm dev                     # http://localhost:3000
 ```
 
-**Signing in locally:** email + password accounts work out of the box. Create one with the
-`auth.signUp` procedure (or the sign-up page once it exists) and sign in at `/api/auth/signin`
-until the `/login` page ships. Discord login is optional: create a Discord app (see the comments
-in `.env.example`) and fill `AUTH_DISCORD_ID` / `AUTH_DISCORD_SECRET`. Providers are configured in
+**Signing in locally:** email + password accounts work out of the box. Create one at
+`/register` and sign in at `/login`. Discord login is optional: create a Discord app (see the
+comments in `.env.example`) and fill `AUTH_DISCORD_ID` / `AUTH_DISCORD_SECRET` (the `/login`
+page has no Discord button yet). Providers are configured in
 `src/server/auth/config.ts`.
 
 ## Running everything with Docker

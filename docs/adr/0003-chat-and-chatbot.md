@@ -24,7 +24,7 @@ T-09 is covered by the contract (§9).
 
 ## Decision
 
-### Data model (from the contract, built in PR 1)
+### Data model (from the contract, built in #68)
 
 | Table | Fields | Constraints / indexes |
 | --- | --- | --- |
