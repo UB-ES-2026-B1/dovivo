@@ -51,9 +51,8 @@ export const propertyRouter = createTRPCRouter({
           deletedAt: null,
           listingType: filters.listingType,
           propertyType: filters.propertyType,
-          city: filters.city
-            ? { equals: filters.city, mode: "insensitive" }
-            : undefined,
+          // `city` is citext, so a plain equals is case-insensitive and uses the index.
+          city: filters.city,
           bedrooms: filters.minBedrooms
             ? { gte: filters.minBedrooms }
             : undefined,
@@ -119,20 +118,36 @@ export const propertyRouter = createTRPCRouter({
   publish: protectedProcedure
     .input(z.object({ id: z.string() }))
     .mutation(async ({ ctx, input }) => {
-      const property = await ctx.db.property.findUnique({
-        where: { id: input.id },
-        select: { ownerId: true, deletedAt: true },
-      });
-      if (!property || property.deletedAt) {
-        throw new TRPCError({ code: "NOT_FOUND" });
-      }
-      if (property.ownerId !== ctx.session.user.id) {
-        throw new TRPCError({ code: "FORBIDDEN" });
-      }
-
-      return ctx.db.property.update({
-        where: { id: input.id },
+      // Check and update in a single statement so two concurrent calls can't both publish, and a
+      // RESERVED/CLOSED listing never goes back to PUBLISHED with a fresh publishedAt.
+      const { count } = await ctx.db.property.updateMany({
+        where: {
+          id: input.id,
+          ownerId: ctx.session.user.id,
+          deletedAt: null,
+          status: "DRAFT",
+        },
         data: { status: "PUBLISHED", publishedAt: new Date() },
       });
+
+      if (count === 0) {
+        // Nothing was updated: work out why, only to return the right error.
+        const property = await ctx.db.property.findUnique({
+          where: { id: input.id },
+          select: { ownerId: true, deletedAt: true },
+        });
+        if (!property || property.deletedAt) {
+          throw new TRPCError({ code: "NOT_FOUND" });
+        }
+        if (property.ownerId !== ctx.session.user.id) {
+          throw new TRPCError({ code: "FORBIDDEN" });
+        }
+        throw new TRPCError({
+          code: "CONFLICT",
+          message: "Only draft listings can be published.",
+        });
+      }
+
+      return ctx.db.property.findUniqueOrThrow({ where: { id: input.id } });
     }),
 });

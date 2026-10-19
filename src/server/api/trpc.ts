@@ -124,27 +124,16 @@ export const publicProcedure = t.procedure.use(timingMiddleware);
  */
 export const protectedProcedure = t.procedure
   .use(timingMiddleware)
-  .use(async ({ ctx, next }) => {
+  .use(({ ctx, next }) => {
+    // Blocked or deleted users already have no session here: the Auth.js `jwt` callback re-checks
+    // the account in the DB on every `auth()` call and refreshes the role (see `createJwtCallback`).
     if (!ctx.session?.user) {
-      throw new TRPCError({ code: "UNAUTHORIZED" });
-    }
-    // Sessions are JWTs, which can't be revoked before they expire. Re-check the account on every
-    // protected call so blocking or deleting a user takes effect immediately, and use the current
-    // role from the DB rather than the one copied into the token at sign-in.
-    const user = await ctx.db.user.findUnique({
-      where: { id: ctx.session.user.id },
-      select: { blockedAt: true, role: true },
-    });
-    if (!user || user.blockedAt) {
       throw new TRPCError({ code: "UNAUTHORIZED" });
     }
     return next({
       ctx: {
         // infers the `session` as non-nullable
-        session: {
-          ...ctx.session,
-          user: { ...ctx.session.user, role: user.role },
-        },
+        session: { ...ctx.session, user: ctx.session.user },
       },
     });
   });

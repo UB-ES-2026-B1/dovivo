@@ -6,7 +6,10 @@ import { z } from "zod";
  * both sides report the same per-field errors.
  */
 
-/** Emails are stored trimmed and lowercased so uniqueness is case-insensitive. */
+/**
+ * Emails are stored trimmed and lowercased. Uniqueness doesn't rely on it: `User.email` is citext,
+ * so it is case-insensitive for every sign-up path (OAuth emails aren't lowercased by us).
+ */
 const emailSchema = z.string().trim().toLowerCase().email().max(254);
 
 export const PASSWORD_MIN_LENGTH = 8;

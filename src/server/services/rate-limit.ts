@@ -15,6 +15,8 @@ export type RateLimitResult = {
 
 export type RateLimiter = {
   check(key: string): RateLimitResult;
+  /** Hands back one call counted by `check` in the current window (no-op once it has ended). */
+  refund(key: string): void;
   /** Forget all counters. Meant for tests. */
   reset(): void;
 };
@@ -65,6 +67,12 @@ export function createRateLimiter({
       current.count += 1;
       return { allowed: true, retryAfterMs: 0 };
     },
+    refund(key) {
+      const current = windows.get(key);
+      if (current && current.resetAt > now() && current.count > 0) {
+        current.count -= 1;
+      }
+    },
     reset() {
       windows.clear();
       nextPruneAt = 0;
@@ -79,14 +87,16 @@ export const SIGN_UP_PER_IP_LIMIT = 5;
 export const SIGN_UP_WINDOW_MS = FIFTEEN_MINUTES_MS;
 
 /**
- * Sign-in attempts allowed per client IP per window, across all emails (skipped when the IP is
- * unknown). Slows down one client trying many accounts (credential stuffing).
+ * Failed sign-in attempts allowed per client IP per window, across all emails (skipped when the
+ * IP is unknown). Slows down one client trying many accounts (credential stuffing). Successful
+ * sign-ins don't count, so many users behind one shared IP can still sign in.
  */
 export const SIGN_IN_PER_IP_LIMIT = 30;
 /**
- * Sign-in attempts allowed per email per window, from any IP. Protects one account from
- * distributed password guessing. Trade-off: anyone can lock an account's password sign-in for
- * one window by burning its attempts; acceptable at our scale, revisit with CAPTCHA if abused.
+ * Failed sign-in attempts allowed per email per window, from any IP. Protects one account from
+ * distributed password guessing. Successful sign-ins don't count, so the owner never uses up their
+ * own attempts. Trade-off: someone who fails 10 times on purpose still locks the account's password
+ * sign-in for one window; acceptable at our scale, revisit with CAPTCHA if abused.
  */
 export const SIGN_IN_PER_EMAIL_LIMIT = 10;
 export const SIGN_IN_WINDOW_MS = FIFTEEN_MINUTES_MS;
@@ -115,7 +125,10 @@ export const signInLimiters = createSignInLimiters();
 
 /**
  * Counts one sign-in attempt and returns whether it may proceed. Checked in order, stopping at the
- * first limit hit: per IP (only when the IP is known), then per email.
+ * first limit hit: per IP (only when the IP is known), then per email. Every attempt is counted up
+ * front, even though only failures should count: checking after the (slow) password check would
+ * let parallel requests all pass before any of them is counted. Successes are handed back with
+ * `refundSignInAttempt`.
  *
  * There is no separate per IP + email limiter: the per-email limit already caps every
  * IP + email pair, so it would never trigger first.
@@ -130,6 +143,15 @@ export function checkSignInRateLimit(
   return limiters.perEmail.check(attempt.email).allowed;
 }
 
+/** Hands back an attempt counted by `checkSignInRateLimit` once it turned out to be a success. */
+export function refundSignInAttempt(
+  limiters: SignInLimiters,
+  attempt: { ip: string | null; email: string },
+): void {
+  if (attempt.ip !== null) limiters.perIp.refund(attempt.ip);
+  limiters.perEmail.refund(attempt.email);
+}
+
 const nonEmpty = (value: string | null | undefined): string | null => {
   const trimmed = value?.trim();
   if (!trimmed) return null; // missing or empty
@@ -142,19 +164,21 @@ const nonEmpty = (value: string | null | undefined): string | null => {
  *
  * `X-Forwarded-For` is a comma-separated list where every hop APPENDS the address it received the
  * request from, so only the right-hand entries written by our own infrastructure are trustworthy;
- * anything to their left was sent by the client and can be forged. Next.js itself only sets the
- * header from the socket when it is missing.
+ * anything to their left was sent by the client and can be forged.
  *
  * `trustedProxyCount` is the number of reverse proxies in front of the app (`TRUSTED_PROXY_COUNT`):
- * - `0` (no proxy): use the rightmost entry. If the client sent no header, Next wrote the socket
- *   address there; if it did send one, the value is client-controlled and can be spoofed, which
- *   is unavoidable without a proxy (the per-email limit still applies).
+ * - `0` (no proxy): `null`. Without a proxy every forwarding header comes from the client (Next.js
+ *   only fills `X-Forwarded-For` from the socket when the client didn't send one, so the two can't
+ *   be told apart). Trusting it would let anyone pick a fresh IP per request, so IP limits are off
+ *   and only the per-email sign-in limit applies. Fine for local dev; deployments must set the
+ *   real proxy count.
  * - `N >= 1`: the entry `N` positions from the right (`entries[length - N]`). With one proxy that
  *   appends the client address, that is the rightmost entry (the real client); with two, the
  *   rightmost is the first proxy's address and the client is the one before it, and so on.
  *
- * If the header has fewer entries than expected, the request did not come through our proxies,
- * so it is not trusted (`null`). Without `X-Forwarded-For` at all, `X-Real-IP` is used.
+ * If the header is missing or has fewer entries than expected, the request did not come through
+ * our proxies, so it is not trusted (`null`). `X-Real-IP` is never used: our proxies may not set
+ * it, and then it is whatever the client sent.
  *
  * Treat the result as a throttling key, not as an identity.
  */
@@ -162,11 +186,12 @@ export function getClientIp(
   headers: Headers,
   trustedProxyCount: number,
 ): string | null {
+  if (trustedProxyCount < 1) return null;
+
   const forwardedFor = headers.get("x-forwarded-for");
-  if (forwardedFor === null) return nonEmpty(headers.get("x-real-ip"));
+  if (forwardedFor === null) return null;
 
   const entries = forwardedFor.split(",");
-  const fromRight = Math.max(trustedProxyCount, 1);
-  if (entries.length < fromRight) return null;
-  return nonEmpty(entries[entries.length - fromRight]);
+  if (entries.length < trustedProxyCount) return null;
+  return nonEmpty(entries[entries.length - trustedProxyCount]);
 }

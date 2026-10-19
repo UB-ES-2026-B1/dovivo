@@ -89,7 +89,8 @@ model Property {
 
   address      String
   neighborhood String?
-  city         String
+  // citext: case-insensitive equality that can still use the city index.
+  city         String  @db.Citext
   province     String
   postalCode   String?
   country      String  @default("ES")
@@ -114,6 +115,8 @@ model Property {
   // Soft delete (US-19): hidden from search, kept for favourites and chats.
   deletedAt   DateTime?
 
+  // Target of Conversation's composite FK, so advertiserId always matches ownerId.
+  @@unique([id, ownerId])
   @@index([status, listingType, propertyType])
   @@index([status, priceCents])
   @@index([city])
@@ -121,7 +124,8 @@ model Property {
   @@index([postalCode])
   @@index([neighborhood])
   @@index([latitude, longitude])
-  @@index([publishedAt])
+  // Default search order (`list`): PUBLISHED listings, newest first, `id` as tie-breaker.
+  @@index([status, publishedAt(sort: Desc), id(sort: Desc)])
   @@index([ownerId])
 }
 
@@ -141,6 +145,9 @@ model PropertyImage {
   propertyId   String
   createdAt    DateTime @default(now())
 
+  // Not DEFERRABLE (Prisma can't express it), so swapping two positions directly fails with P2002.
+  // To reorder, in one transaction: move the affected images to temporary negative positions
+  // (-1, -2, ...), then write the final ones.
   @@unique([propertyId, position])
 }
 
@@ -159,11 +166,12 @@ model Favourite {
 /// interestedUserId <> advertiserId is enforced by a CHECK added by hand in the migration.
 model Conversation {
   id               String    @id @default(cuid())
-  property         Property  @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  // Composite FK to (Property.id, Property.ownerId): advertiserId can't drift from the owner.
+  property         Property  @relation(fields: [propertyId, advertiserId], references: [id, ownerId], onDelete: Cascade, onUpdate: Cascade)
   propertyId       String
   interestedUser   User      @relation("ConversationInterested", fields: [interestedUserId], references: [id], onDelete: Cascade)
   interestedUserId String
-  // Copied from Property.ownerId when the conversation is created.
+  // Always equal to Property.ownerId (enforced by the composite FK above).
   advertiser       User      @relation("ConversationAdvertiser", fields: [advertiserId], references: [id], onDelete: Cascade)
   advertiserId     String
   lastMessageAt    DateTime?
@@ -266,7 +274,7 @@ model SavedSearch {
   user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId        String
   name          String
-  // Same shape as the search filters: validate with propertyFiltersSchema on write and read.
+  // Validate with savedSearchFiltersSchema on write and read (search filters without pagination).
   filters       Json
   alertsEnabled Boolean   @default(true)
   lastAlertedAt DateTime?
@@ -307,13 +315,15 @@ model Session {
 model User {
   id            String    @id @default(cuid())
   name          String?
-  email         String?   @unique
+  // citext: unique regardless of case, also for OAuth emails we don't lowercase ourselves.
+  email         String?   @unique @db.Citext
   emailVerified DateTime?
   image         String?
   phone         String?
   // Null if the user only signs in with OAuth. Never store the plain password.
   passwordHash  String?
-  // If set, an admin blocked the user: they can't sign in or publish.
+  // If set, an admin blocked the user. Enforced by auth (T-06): sign-in is rejected and the
+  // Auth.js jwt callback re-checks it on every request, dropping open sessions.
   blockedAt     DateTime?
   role          UserRole  @default(USER)
   createdAt     DateTime  @default(now())

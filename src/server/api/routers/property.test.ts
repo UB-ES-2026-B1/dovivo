@@ -13,12 +13,10 @@ const fakeDb = {
   property: {
     findMany: vi.fn(),
     findUnique: vi.fn(),
+    findUniqueOrThrow: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
-  },
-  // `protectedProcedure` re-checks that the session user still exists and is not blocked.
-  user: {
-    findUnique: vi.fn(),
+    updateMany: vi.fn(),
   },
 };
 
@@ -29,8 +27,7 @@ const ownerSession: Session = {
 
 const makeCaller = (session: Session | null) =>
   createCaller({
-    // The router only touches `db.property` (and `db.user` via `protectedProcedure`), so a narrow
-    // fake is enough. Cast through `unknown`
+    // The router only touches `db.property`, so a narrow fake is enough. Cast through `unknown`
     // because the fake does not implement the whole PrismaClient surface.
     db: fakeDb as unknown as PrismaClient,
     session,
@@ -63,7 +60,6 @@ beforeEach(() => {
   vi.resetAllMocks();
   // The timing middleware logs every call; keep the test output clean.
   vi.spyOn(console, "log").mockImplementation(() => undefined);
-  fakeDb.user.findUnique.mockResolvedValue({ blockedAt: null, role: "USER" });
 });
 
 describe("property.byId", () => {
@@ -108,7 +104,27 @@ describe("property.byId", () => {
 });
 
 describe("property.publish", () => {
+  it("publishes a draft atomically, scoped to its owner", async () => {
+    fakeDb.property.updateMany.mockResolvedValue({ count: 1 });
+    fakeDb.property.findUniqueOrThrow.mockResolvedValue(baseProperty);
+
+    await expect(
+      makeCaller(ownerSession).property.publish({ id: "prop_1" }),
+    ).resolves.toEqual(baseProperty);
+
+    expect(fakeDb.property.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: "prop_1",
+        ownerId: "owner_1",
+        deletedAt: null,
+        status: "DRAFT",
+      },
+      data: { status: "PUBLISHED", publishedAt: expect.any(Date) as Date },
+    });
+  });
+
   it("returns NOT_FOUND for a soft-deleted listing", async () => {
+    fakeDb.property.updateMany.mockResolvedValue({ count: 0 });
     fakeDb.property.findUnique.mockResolvedValue({
       ownerId: "owner_1",
       deletedAt: new Date(),
@@ -117,7 +133,31 @@ describe("property.publish", () => {
     await expect(
       makeCaller(ownerSession).property.publish({ id: "prop_1" }),
     ).rejects.toMatchObject({ code: "NOT_FOUND" });
-    expect(fakeDb.property.update).not.toHaveBeenCalled();
+  });
+
+  it("returns FORBIDDEN when the listing belongs to someone else", async () => {
+    fakeDb.property.updateMany.mockResolvedValue({ count: 0 });
+    fakeDb.property.findUnique.mockResolvedValue({
+      ownerId: "other_user",
+      deletedAt: null,
+    });
+
+    await expect(
+      makeCaller(ownerSession).property.publish({ id: "prop_1" }),
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+
+  it("returns CONFLICT when the listing is not a draft", async () => {
+    fakeDb.property.updateMany.mockResolvedValue({ count: 0 });
+    fakeDb.property.findUnique.mockResolvedValue({
+      ownerId: "owner_1",
+      deletedAt: null,
+    });
+
+    await expect(
+      makeCaller(ownerSession).property.publish({ id: "prop_1" }),
+    ).rejects.toMatchObject({ code: "CONFLICT" });
+    expect(fakeDb.property.findUniqueOrThrow).not.toHaveBeenCalled();
   });
 });
 
@@ -126,31 +166,6 @@ describe("protectedProcedure", () => {
     await expect(makeCaller(null).property.mine()).rejects.toMatchObject({
       code: "UNAUTHORIZED",
     });
-    expect(fakeDb.property.findMany).not.toHaveBeenCalled();
-  });
-
-  it("returns UNAUTHORIZED when the session user is blocked", async () => {
-    fakeDb.user.findUnique.mockResolvedValue({
-      blockedAt: new Date(),
-      role: "USER",
-    });
-
-    await expect(
-      makeCaller(ownerSession).property.mine(),
-    ).rejects.toMatchObject({ code: "UNAUTHORIZED" });
-    expect(fakeDb.user.findUnique).toHaveBeenCalledWith({
-      where: { id: "owner_1" },
-      select: { blockedAt: true, role: true },
-    });
-    expect(fakeDb.property.findMany).not.toHaveBeenCalled();
-  });
-
-  it("returns UNAUTHORIZED when the session user no longer exists", async () => {
-    fakeDb.user.findUnique.mockResolvedValue(null);
-
-    await expect(
-      makeCaller(ownerSession).property.mine(),
-    ).rejects.toMatchObject({ code: "UNAUTHORIZED" });
     expect(fakeDb.property.findMany).not.toHaveBeenCalled();
   });
 });
