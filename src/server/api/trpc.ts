@@ -11,8 +11,10 @@ import { initTRPC, TRPCError } from "@trpc/server";
 import superjson from "superjson";
 import { ZodError } from "zod";
 
+import { env } from "~/env";
 import { auth } from "~/server/auth";
 import { db } from "~/server/db";
+import { getClientIp } from "~/server/services/rate-limit";
 
 /**
  * 1. CONTEXT
@@ -32,6 +34,8 @@ export const createTRPCContext = async (opts: { headers: Headers }) => {
   return {
     db,
     session,
+    /** Client IP for rate limiting; `null` when it can't be trusted (see `getClientIp`). */
+    clientIp: getClientIp(opts.headers, env.TRUSTED_PROXY_COUNT),
     ...opts,
   };
 };
@@ -121,6 +125,8 @@ export const publicProcedure = t.procedure.use(timingMiddleware);
 export const protectedProcedure = t.procedure
   .use(timingMiddleware)
   .use(({ ctx, next }) => {
+    // Blocked or deleted users already have no session here: the Auth.js `jwt` callback re-checks
+    // the account in the DB on every `auth()` call and refreshes the role (see `createJwtCallback`).
     if (!ctx.session?.user) {
       throw new TRPCError({ code: "UNAUTHORIZED" });
     }

@@ -1,10 +1,13 @@
 import { env } from "~/env";
 import { PrismaClient } from "@prisma/client";
 
+import { prismaGlobalOmit } from "~/server/db-omit";
+
 const createPrismaClient = () =>
   new PrismaClient({
     log:
       env.NODE_ENV === "development" ? ["query", "error", "warn"] : ["error"],
+    omit: prismaGlobalOmit,
   });
 
 const globalForPrisma = globalThis as unknown as {

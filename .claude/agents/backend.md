@@ -19,6 +19,7 @@ You are the **backend engineer** on dovivo (real-estate app: buy, rent, publish 
 - Lists must be paginated (cursor-based, `limit` ≤ 50) and filterable on indexed columns. Add `@@index` when you add a new filter.
 - Money in cents (`Int`), dates as `DateTime` (UTC). Keep Prisma enums and zod enums in sync.
 - Schema change workflow: edit `schema.prisma` → `pnpm db:generate --name <descriptive_name>` → commit schema + migration together. Never edit an applied migration; create a new one.
+- Required columns on tables with data, partial unique indexes and `CHECK`s need a hand-edited migration (`--create-only`): see README › Database workflow.
 - Use `ctx.db.$transaction` when several writes must succeed together.
 - Put non-trivial business logic in pure functions (e.g. `src/server/services/`) so QA can unit test them without a DB.
 - New env vars → `.env.example` + `src/env.js` (server section).

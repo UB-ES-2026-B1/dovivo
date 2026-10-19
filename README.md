@@ -75,15 +75,28 @@ flowchart LR
 
 **Domain model** (`prisma/schema.prisma`)
 
+The schema already contains every model of the MVP (see `dovivo_backend_contract.pdf`), even the
+ones whose user story comes in a later sprint, so it doesn't change mid-project.
+
 ```
 User 1─* Property 1─* PropertyImage
-  │          │
-  └─* Favourite *─┘
+ │ │ │      │ │ │
+ │ │ │      │ │ └─* Report *── User (reporter, resolvedBy)
+ │ │ │      │ └─* Conversation 1─* Message *── User (sender)
+ │ │ │      │       └── User (interestedUser, advertiser)
+ │ │ │      └─* Favourite *── User
+ │ │ └─1 UserPreference
+ │ └─* SavedSearch, ContactMessage, PasswordResetToken
+ └─* Account, Session (Auth.js)
 ```
 
 - `Property`: `listingType` (`SALE` | `RENT`), `propertyType` (apartment, house, room...), `status`
   (`DRAFT` → `PUBLISHED` → `RESERVED` → `CLOSED`), price in **cents**, location and features.
-- `User.role`: `USER` | `AGENT` | `ADMIN`.
+  Deleting a listing from the app is a soft delete (`deletedAt`).
+- `User.role`: `USER` | `AGENT` | `ADMIN`. `blockedAt` set = blocked by an admin.
+- `Conversation`: one per property and interested user. `Report`: listing reports for moderation.
+- Deleting a user cascades to their data, except `Report` and `ContactMessage`, which are kept
+  (`SetNull`) for the moderation history.
 
 **Deployment shape (Docker)**: `db` (Postgres) → `migrate` (one-shot `prisma migrate deploy`) →
 `app` (Next.js standalone server, non-root, healthcheck on `/api/health`).
@@ -239,9 +252,10 @@ pnpm db:migrate              # applies migrations to your local DB
 pnpm dev                     # http://localhost:3000
 ```
 
-**Signing in locally:** login providers are only enabled when their credentials are set. To
-test auth, create a Discord app (see the comments in `.env.example`) and fill
-`AUTH_DISCORD_ID` / `AUTH_DISCORD_SECRET`. More providers (Google, GitHub, email) can be added in
+**Signing in locally:** email + password accounts work out of the box. Create one with the
+`auth.signUp` procedure (or the sign-up page once it exists) and sign in at `/api/auth/signin`
+until the `/login` page ships. Discord login is optional: create a Discord app (see the comments
+in `.env.example`) and fill `AUTH_DISCORD_ID` / `AUTH_DISCORD_SECRET`. Providers are configured in
 `src/server/auth/config.ts`.
 
 ## Running everything with Docker
@@ -290,6 +304,25 @@ locally). If you change `DB_PORT`, update the port in `DATABASE_URL` too.
 
 Don't use `db:push` on shared databases, and don't edit migrations that are already merged.
 
+**Editing a migration by hand.** Some changes need SQL that Prisma doesn't write for you. Create the
+migration without applying it, edit `migration.sql`, then apply it:
+
+```bash
+pnpm db:generate --name <change> --create-only   # writes the SQL, doesn't apply it
+# edit prisma/migrations/<timestamp>_<change>/migration.sql
+pnpm db:generate                                 # applies the pending migration
+```
+
+You need it when:
+
+- **A new required column on a table that may have rows.** `ADD COLUMN ... NOT NULL` fails if a
+  teammate's database has data. Add it with a temporary `DEFAULT` (or nullable + `UPDATE`), then
+  `DROP DEFAULT` / `SET NOT NULL`. See `*_full_mvp_schema/migration.sql`.
+- **Constraints Prisma can't express**: partial unique indexes (`... WHERE "isCover"`), `CHECK`s,
+  extensions. Leave a comment in `schema.prisma` saying the constraint lives in the migration.
+
+Mark every hand edit with an SQL comment.
+
 ## Environment variables
 
 Defined and validated in `src/env.js`. Documented in `.env.example`.
@@ -300,12 +333,27 @@ Defined and validated in `src/env.js`. Documented in `.env.example`.
 | `AUTH_SECRET`         | yes in production | Auth.js encryption secret (`npx auth secret`)   |
 | `AUTH_DISCORD_ID`     | no                | Discord OAuth client id (enables Discord login) |
 | `AUTH_DISCORD_SECRET` | no                | Discord OAuth client secret                     |
+| `TRUSTED_PROXY_COUNT` | no (default `0`)  | Reverse proxies in front of the app; used to read the client IP for sign-up / sign-in rate limits. `0` = IP unknown, per-IP limits off: set it on every deployment |
 
 To add a variable, put it in `.env.example` and in `src/env.js`, and in `docker-compose.yml` if the container needs it.
 
 ## Team workflow & AI agents
+**Branching strategy**
 
-- Branch from `main` → small PR → CI must be green → review → squash merge.
+```mermaid
+flowchart LR
+    F["feat/… · fix/… · docs/… · chore/…"] -- "PR + review + CI green" --> D["development"]
+    D -- "release PR at the end of each sprint" --> M["main (protected)"]
+```
+
+| Branch | Purpose | Rules |
+| --- | --- | --- |
+| `main` | Stable branch used for demos and releases | Never touched directly. Protected. It only receives the release PR from `development` at the end of each sprint. |
+| `development` | Integration branch | Every task branch starts here and every PR targets it. |
+| `feat/…`, `fix/…`, `docs/…`, `chore/…` | One short-lived branch per task | Branch from `development`, open a small PR back, delete the branch after merging. |
+
+Flow: branch from `development` → small PR (the PR template loads automatically) → CI green → review by at least one other teammate → merge into `development`. Nobody merges their own PR. Mention the task in the PR title, e.g. `(T-01)` or `(US-02)`.
+
 - Conventional commits: `feat:`, `fix:`, `docs:`, `test:`, `refactor:`, `chore:`.
 - CI (`.github/workflows/ci.yml`) runs format, lint, typecheck, tests and build on **Ubuntu,
   Windows and macOS**, and builds the Docker image.

@@ -28,6 +28,12 @@ export const propertyFiltersSchema = z.object({
   cursor: z.string().optional(),
 });
 
+/** Filters stored in SavedSearch.filters: the search filters without pagination state. */
+export const savedSearchFiltersSchema = propertyFiltersSchema.omit({
+  limit: true,
+  cursor: true,
+});
+
 export const createPropertySchema = z.object({
   title: z.string().trim().min(5).max(120),
   description: z.string().trim().min(20).max(5000),
@@ -39,8 +45,10 @@ export const createPropertySchema = z.object({
   areaM2: z.number().int().positive().optional(),
   address: z.string().trim().min(3),
   city: z.string().trim().min(2),
+  province: z.string().trim().min(2),
   postalCode: z.string().trim().optional(),
 });
 
 export type PropertyFilters = z.infer<typeof propertyFiltersSchema>;
+export type SavedSearchFilters = z.infer<typeof savedSearchFiltersSchema>;
 export type CreatePropertyInput = z.infer<typeof createPropertySchema>;
