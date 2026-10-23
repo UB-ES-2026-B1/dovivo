@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { SignOutButton } from "~/app/_components/sign-out-button";
 import { auth } from "~/server/auth";
 
 const NAV = [
@@ -27,20 +28,24 @@ export async function SiteHeader() {
               {item.label}
             </Link>
           ))}
-          {!session && (
-            <Link
-              href="/register"
-              className="text-slate-700 hover:text-emerald-700"
-            >
-              Create account
-            </Link>
+          {session ? (
+            <SignOutButton />
+          ) : (
+            <>
+              <Link
+                href="/register"
+                className="text-slate-700 hover:text-emerald-700"
+              >
+                Create account
+              </Link>
+              <Link
+                href="/login"
+                className="rounded-full bg-emerald-700 px-4 py-2 text-white hover:bg-emerald-800"
+              >
+                Sign in
+              </Link>
+            </>
           )}
-          <Link
-            href={session ? "/api/auth/signout" : "/login"}
-            className="rounded-full bg-emerald-700 px-4 py-2 text-white hover:bg-emerald-800"
-          >
-            {session ? "Sign out" : "Sign in"}
-          </Link>
         </nav>
       </div>
     </header>
