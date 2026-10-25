@@ -1,13 +1,24 @@
 import Link from "next/link";
 
-import { SignOutButton } from "~/app/_components/sign-out-button";
-import { auth } from "~/server/auth";
+import { primaryButtonClass } from "~/app/_components/button-styles";
+import { SignOutSubmit } from "~/app/_components/sign-out-submit";
+import { auth, signOut } from "~/server/auth";
 
 const NAV = [
   { href: "/buy", label: "Buy" },
   { href: "/rent", label: "Rent" },
   { href: "/publish", label: "Publish" },
 ];
+
+/**
+ * Server action behind "Sign out" (US-03): Auth.js clears the session cookie and redirects home.
+ * As a form action it works before hydration and without JavaScript, and Auth.js errors go through
+ * Next's error handling instead of Auth.js's default error page.
+ */
+async function signOutAction() {
+  "use server";
+  await signOut({ redirectTo: "/" });
+}
 
 export async function SiteHeader() {
   const session = await auth();
@@ -29,7 +40,9 @@ export async function SiteHeader() {
             </Link>
           ))}
           {session ? (
-            <SignOutButton />
+            <form action={signOutAction}>
+              <SignOutSubmit />
+            </form>
           ) : (
             <>
               <Link
@@ -38,10 +51,7 @@ export async function SiteHeader() {
               >
                 Create account
               </Link>
-              <Link
-                href="/login"
-                className="rounded-full bg-emerald-700 px-4 py-2 text-white hover:bg-emerald-800"
-              >
+              <Link href="/login" className={primaryButtonClass}>
                 Sign in
               </Link>
             </>
