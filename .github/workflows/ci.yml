@@ -5,6 +5,8 @@ on:
   push:
     branches: [main, development]
 
+# Cancel superseded runs on PRs only. On pushes (e.g. a deploy to staging) we never
+# cancel, so a deployment or migration can't be cut in half.
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -47,3 +49,73 @@ jobs:
           push: false
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  deploy-staging:
+    name: Deploy to staging (Azure)
+    needs: [check, docker]
+    # Only after a push to development (a merged PR). Never on pull requests or main.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/development'
+    runs-on: ubuntu-latest
+    environment:
+      name: staging
+      url: https://dovivo-staging-ahbzg9e9ghb8enb3.francecentral-01.azurewebsites.net
+    permissions:
+      contents: read
+      packages: write
+    concurrency:
+      group: deploy-staging
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v5
+
+      # GHCR image names must be lowercase and the org name has uppercase letters.
+      - name: Compute image name
+        run: echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/dovivo-app" >> "$GITHUB_ENV"
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build and push app image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: runner
+          push: true
+          provenance: false
+          tags: |
+            ${{ env.IMAGE }}:${{ github.sha }}
+            ${{ env.IMAGE }}:staging
+          labels: org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Apply database migrations
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          docker build --target migrator -t dovivo-migrate .
+          docker run --rm -e DATABASE_URL dovivo-migrate
+
+      - name: Deploy to Azure Web App
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: dovivo-staging
+          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
+          images: ${{ env.IMAGE }}:${{ github.sha }}
+
+      - name: Smoke test /api/health
+        run: |
+          URL="https://dovivo-staging-ahbzg9e9ghb8enb3.francecentral-01.azurewebsites.net/api/health"
+          for i in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "$URL" || true)
+            echo "attempt $i: HTTP $code"
+            if [ "$code" = "200" ]; then exit 0; fi
+            sleep 10
+          done
+          echo "Staging did not become healthy in time" >&2
+          exit 1
