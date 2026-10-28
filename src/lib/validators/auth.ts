@@ -12,6 +12,9 @@ import { z } from "zod";
  */
 const emailSchema = z.string().trim().toLowerCase().email().max(254);
 
+/** Display name, shared with profile editing (`src/lib/validators/user.ts`). */
+export const nameSchema = z.string().trim().min(2).max(80);
+
 export const PASSWORD_MIN_LENGTH = 8;
 /**
  * bcrypt only uses the first 72 BYTES of the password and silently ignores the rest, so longer
@@ -29,7 +32,7 @@ const fitsBcrypt = (password: string) =>
 const tooLongMessage = `Password is too long (max ${PASSWORD_MAX_BYTES} bytes; accented characters and emoji count as more than one)`;
 
 export const signUpSchema = z.object({
-  name: z.string().trim().min(2).max(80),
+  name: nameSchema,
   email: emailSchema,
   password: z
     .string()
