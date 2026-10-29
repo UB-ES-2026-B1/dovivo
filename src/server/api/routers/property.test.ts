@@ -185,37 +185,30 @@ describe("property.mine", () => {
 });
 
 describe("property.list", () => {
-  it("excludes soft-deleted listings and orders by publishedAt then id", async () => {
-    fakeDb.property.findMany.mockResolvedValue([]);
+  it("is public and returns cards with a cover instead of the image list", async () => {
+    fakeDb.property.findMany.mockResolvedValue([
+      {
+        id: "prop_1",
+        title: "Casa amb jardí",
+        listingType: "SALE",
+        propertyType: "HOUSE",
+        priceCents: 30_000_000,
+        currency: "EUR",
+        areaM2: 120,
+        bedrooms: 4,
+        neighborhood: null,
+        city: "Lleida",
+        province: "Lleida",
+        images: [],
+      },
+    ]);
 
-    await makeCaller(null).property.list({});
+    const page = await makeCaller(null).property.list({ listingType: "SALE" });
 
-    expect(fakeDb.property.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({
-          status: "PUBLISHED",
-          deletedAt: null,
-        }) as unknown,
-        orderBy: [{ publishedAt: "desc" }, { id: "desc" }],
-      }),
-    );
-  });
-
-  it("returns only the cover photo with public fields", async () => {
-    fakeDb.property.findMany.mockResolvedValue([]);
-
-    await makeCaller(null).property.list({});
-
-    expect(fakeDb.property.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        include: {
-          images: {
-            select: publicImageFields,
-            orderBy: [{ isCover: "desc" }, { position: "asc" }],
-            take: 1,
-          },
-        },
-      }),
-    );
+    expect(page.nextCursor).toBeUndefined();
+    expect(page.items).toEqual([
+      expect.objectContaining({ id: "prop_1", cover: null }),
+    ]);
+    // The query itself is covered by src/server/services/property-list.test.ts.
   });
 });

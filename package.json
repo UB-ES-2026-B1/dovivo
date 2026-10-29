@@ -10,7 +10,9 @@
     "db:generate": "prisma migrate dev",
     "db:migrate": "prisma migrate deploy",
     "db:push": "prisma db push",
+    "db:bench": "tsx prisma/bench-list.ts",
     "db:reset": "prisma migrate reset",
+    "db:seed": "tsx prisma/seed.ts",
     "db:studio": "prisma studio",
     "db:up": "docker compose up -d db",
     "dev": "next dev --turbo",
@@ -57,6 +59,7 @@
     "prettier-plugin-tailwindcss": "^0.6.11",
     "prisma": "^6.6.0",
     "tailwindcss": "^4.0.15",
+    "tsx": "^4.23.15",
     "typescript": "^5.8.2",
     "typescript-eslint": "^8.27.0",
     "vite-tsconfig-paths": "^6.1.1",
@@ -75,6 +78,12 @@
       "@prisma/engines",
       "prisma",
       "unrs-resolver"
+    ],
+    "ignoredBuiltDependencies": [
+      "esbuild"
     ]
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
   }
 }

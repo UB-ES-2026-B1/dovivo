@@ -27,10 +27,14 @@ from the PO backlog's REST codes, and the auth flows. Background: [ADR 0001](./a
 - Never `fetch("/api/trpc/...")` by hand (AGENTS rule 2).
 - **Role**: `session.user.role` from `auth()` is refreshed from the DB on every request (the
   `jwt` callback, ADR 0002), in tRPC and in server components.
-- **Listing photos**: each image exposes `id`, `url`, `thumbnailUrl`, `alt`, `position`,
-  `isCover`, `width`, `height`. `property.list` returns one image per listing, the cover
-  (`isCover` first, then lowest `position` if none is marked); `property.byId` returns the
-  gallery ordered by `position`.
+- **Listing cards (US-09)**: `property.list` returns `{ items, nextCursor }`, where each item
+  is a card with only `id`, `title`, `listingType`, `propertyType`, `priceCents`, `currency`,
+  `areaM2`, `bedrooms`, `neighborhood`, `city`, `province` and `cover` (`{ url, thumbnailUrl,
+  alt, width, height }`, or `null` if the listing has no photos). The cover is the photo marked
+  `isCover`, or the lowest `position` if none is marked. Only `PUBLISHED`, not deleted listings,
+  newest first. Next page: pass `nextCursor` back as `cursor` (`undefined` on the last page).
+- **Listing photos (detail)**: `property.byId` returns the gallery ordered by `position`; each
+  image exposes `id`, `url`, `thumbnailUrl`, `alt`, `position`, `isCover`, `width`, `height`.
 - **Soft-deleted listings**: excluded from `list` and `mine`; `byId` and `publish`
   answer `NOT_FOUND`, also for the owner.
 
