@@ -105,6 +105,14 @@ JWT revocation gap in ADR 0002).
 `safeCallbackUrl` from `~/app/_lib/safe-callback-url` (same-origin paths only, no open
 redirects); never check it by hand with `startsWith("/")`. Full profile data (e.g. `phone`) comes from `user.me` (US-04).
 
+**Edit profile (US-05)**: `api.user.updateMe.useMutation()` with `{ name?, phone? }`, validated by
+`updateProfileSchema` from `src/lib/validators/user.ts`. Only the name and the phone are
+editable; omitted fields stay unchanged and `phone: ""` (or `null`) clears it. Phones are stored
+without spaces or dashes. It returns the same fields as `user.me`, so on success update the cache
+with `const utils = api.useUtils()` and `utils.user.me.setData(undefined, updated)` (or call
+`utils.user.me.invalidate()`) to show the changes right away. An invalid field gives `BAD_REQUEST` with per-field errors in
+`error.data.zodError.fieldErrors` and saves nothing.
+
 ## Open points
 
 Pending decisions already listed in contract §10 and in §7 "Contracte API (T-06)" are not
@@ -115,3 +123,4 @@ repeated here. These are extra gaps between the contract and the PO backlog:
 | 1 | **Page size**: `property.list` caps `limit` at **50** (default 20, contract §7); the PO backlog asks for `per_page` max **100**. Tied to contract §10 #5 (cursor vs numbered pages). | Pending PO confirmation |
 | 2 | **Publish immediately or draft first** (US-17): the contract creates a `DRAFT` (`property.create`) and makes it visible with `property.publish`; the PO's `POST /api/properties` may expect the listing to be visible right after creation. Can be solved in the UI by calling both. | Pending PO confirmation |
 | 3 | **Soft-deleted listing detail**: contract §7 only lists `NOT_FOUND` for `property.byId` when the listing is missing or someone else's draft. We also return `NOT_FOUND` when `deletedAt` is set (PO US-12), even for the owner. | Pol to confirm |
+| 4 | **Editable profile fields** (US-05): contract §7 says `user.updateMe` edits "nom, email i telèfon"; the PO subtask (#21) only allows the **name** and the **phone**. We follow #21: the email can't be changed. | Contract to update |
