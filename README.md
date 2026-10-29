@@ -248,6 +248,7 @@ npx auth secret              # writes AUTH_SECRET into .env.local (works on ever
 
 pnpm db:up                   # starts PostgreSQL in Docker (localhost:5432)
 pnpm db:migrate              # applies migrations to your local DB
+pnpm db:seed                 # optional: 1,000 demo listings (see Scripts)
 
 pnpm dev                     # http://localhost:3000
 ```
@@ -291,7 +292,9 @@ locally). If you change `DB_PORT`, update the port in `DATABASE_URL` too.
 | `pnpm db:generate --name <name>` | Create + apply a new migration after editing the schema |
 | `pnpm db:migrate`                | Apply pending migrations                             |
 | `pnpm db:studio`                 | Prisma Studio (DB GUI) at http://localhost:5555      |
-| `pnpm db:reset`                  | ⚠️ Drop the local DB and re-apply all migrations     |
+| `pnpm db:reset`                  | ⚠️ Drop the local DB, re-apply all migrations and run the seed |
+| `pnpm db:seed [--count N]`       | Demo listings (default 1,000). Re-running replaces the previous seed data only |
+| `pnpm db:bench [--runs N]`       | Times `property.list` on the local DB; fails if a p95 is over 300 ms (seed `--count 10000` first) |
 | `pnpm docker:up` / `docker:down` | Full stack in Docker                                 |
 
 ## Database workflow
