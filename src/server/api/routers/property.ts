@@ -11,6 +11,7 @@ import {
   protectedProcedure,
   publicProcedure,
 } from "~/server/api/trpc";
+import { listPropertyCards } from "~/server/services/property-list";
 
 /**
  * Public image fields. Upload metadata (`mimeType`, `sizeBytes`) is internal and never sent to
@@ -32,49 +33,14 @@ const galleryOrderBy = {
   position: "asc",
 } satisfies Prisma.PropertyImageOrderByWithRelationInput;
 
-/** The cover photo first; falls back to the first gallery photo if none is marked as cover. */
-const coverFirstOrderBy = [
-  { isCover: "desc" },
-  { position: "asc" },
-] satisfies Prisma.PropertyImageOrderByWithRelationInput[];
-
 export const propertyRouter = createTRPCRouter({
-  /** Public search used by the /buy and /rent pages. Cursor-based pagination. */
+  /**
+   * Public search used by the /buy and /rent pages (US-09): published listings as cards (see
+   * `propertyCardSelect`), newest first, cursor-based pagination.
+   */
   list: publicProcedure
     .input(propertyFiltersSchema)
-    .query(async ({ ctx, input }) => {
-      const { limit, cursor, minPriceCents, maxPriceCents, ...filters } = input;
-
-      const items = await ctx.db.property.findMany({
-        where: {
-          status: "PUBLISHED",
-          deletedAt: null,
-          listingType: filters.listingType,
-          propertyType: filters.propertyType,
-          // `city` is citext, so a plain equals is case-insensitive and uses the index.
-          city: filters.city,
-          bedrooms: filters.minBedrooms
-            ? { gte: filters.minBedrooms }
-            : undefined,
-          priceCents: { gte: minPriceCents, lte: maxPriceCents },
-        },
-        include: {
-          // Only the cover is needed for the listing card.
-          images: {
-            select: publicImageSelect,
-            orderBy: coverFirstOrderBy,
-            take: 1,
-          },
-        },
-        // `id` tie-breaker keeps cursor pagination stable when publishedAt is equal.
-        orderBy: [{ publishedAt: "desc" }, { id: "desc" }],
-        take: limit + 1,
-        cursor: cursor ? { id: cursor } : undefined,
-      });
-
-      const nextCursor = items.length > limit ? items.pop()?.id : undefined;
-      return { items, nextCursor };
-    }),
+    .query(({ ctx, input }) => listPropertyCards(ctx.db, input)),
 
   byId: publicProcedure
     .input(z.object({ id: z.string() }))
