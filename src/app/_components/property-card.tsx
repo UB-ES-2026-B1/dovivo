@@ -6,7 +6,7 @@ import { type RouterOutputs } from "~/trpc/react";
 type PropertyListItem = RouterOutputs["property"]["list"]["items"][number];
 
 export function PropertyCard({ property }: { property: PropertyListItem }) {
-  const cover = property.images[0];
+  const { cover } = property;
 
   return (
     <Link
