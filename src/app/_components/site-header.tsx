@@ -40,9 +40,17 @@ export async function SiteHeader() {
             </Link>
           ))}
           {session ? (
-            <form action={signOutAction}>
-              <SignOutSubmit />
-            </form>
+            <>
+              <Link
+                href="/profile"
+                className="text-slate-700 hover:text-emerald-700"
+              >
+                My profile
+              </Link>
+              <form action={signOutAction}>
+                <SignOutSubmit />
+              </form>
+            </>
           ) : (
             <>
               <Link
