@@ -16,9 +16,9 @@ export default async function ProfilePage() {
   const session = await auth();
   if (!session) redirect("/login?callbackUrl=/profile");
 
-  // Fetched on the server and handed to the client cache, so the page renders with the data and
-  // profile editing (US-05) can update it in place with `utils.user.me.setData`.
-  void api.user.me.prefetch();
+  // Awaited so the server renders the page with the data (not "Loading…") and hands it to the
+  // client cache, where profile editing (US-05) can update it with `utils.user.me.setData`.
+  await api.user.me.prefetch();
 
   return (
     <HydrateClient>

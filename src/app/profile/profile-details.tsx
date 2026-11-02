@@ -29,10 +29,14 @@ export function ProfileDetails() {
   return (
     <dl className="mt-6 divide-y divide-slate-200 rounded-lg border border-slate-200 bg-white">
       {rows.map(({ label, value }) => (
-        <div key={label} className="grid grid-cols-3 gap-4 px-4 py-3">
+        <div
+          key={label}
+          className="grid gap-1 px-4 py-3 sm:grid-cols-3 sm:gap-4"
+        >
           <dt className="text-sm font-medium text-slate-600">{label}</dt>
+          {/* min-w-0 lets the grid cell shrink, so a long email wraps instead of overflowing. */}
           <dd
-            className={`col-span-2 text-sm ${value ? "text-slate-900" : "text-slate-400 italic"}`}
+            className={`min-w-0 text-sm break-words sm:col-span-2 ${value ? "text-slate-900" : "text-slate-400 italic"}`}
           >
             {value ?? NOT_PROVIDED}
           </dd>
