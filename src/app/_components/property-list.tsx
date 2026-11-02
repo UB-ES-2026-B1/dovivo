@@ -1,27 +1,25 @@
-import { PropertyCard } from "~/app/_components/property-card";
-import { type PropertyFilters } from "~/lib/validators/property";
-import { api } from "~/trpc/server";
+import {
+  PropertyFeed,
+  type PropertyFeedFilters,
+} from "~/app/_components/property-feed";
+import { api, HydrateClient } from "~/trpc/server";
 
+/**
+ * Public listing (US-09). Loads the first page on the server and hands it to the client feed,
+ * which adds "Load more". Wrap it in <Suspense> to show a skeleton while it loads.
+ */
 export async function PropertyList({
   filters,
 }: {
-  filters: Partial<PropertyFilters>;
+  filters: PropertyFeedFilters;
 }) {
-  const { items } = await api.property.list(filters);
-
-  if (items.length === 0) {
-    return (
-      <p className="rounded-xl border border-dashed border-slate-300 p-10 text-center text-slate-500">
-        No properties found yet.
-      </p>
-    );
-  }
+  // Awaited, not `void`: the first page must be in the cache before the feed renders, so the
+  // cards are in the server HTML (and visible without JavaScript).
+  await api.property.list.prefetchInfinite(filters);
 
   return (
-    <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-      {items.map((property) => (
-        <PropertyCard key={property.id} property={property} />
-      ))}
-    </div>
+    <HydrateClient>
+      <PropertyFeed filters={filters} />
+    </HydrateClient>
   );
 }
