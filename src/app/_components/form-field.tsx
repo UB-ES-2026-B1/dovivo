@@ -5,6 +5,8 @@ type FieldProps = {
   autoComplete?: string;
   hint?: string;
   maxLength?: number;
+  /** Initial value, e.g. to prefill an edit form. */
+  defaultValue?: string;
   errors?: string[];
 };
 
@@ -16,6 +18,7 @@ export function Field({
   autoComplete,
   hint,
   maxLength,
+  defaultValue,
   errors,
 }: FieldProps) {
   const errorId = `${name}-error`;
@@ -33,6 +36,7 @@ export function Field({
         type={type}
         autoComplete={autoComplete}
         maxLength={maxLength}
+        defaultValue={defaultValue}
         aria-invalid={hasError}
         aria-describedby={hasError ? errorId : hint ? hintId : undefined}
         className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 focus:border-emerald-700 focus:outline-none aria-invalid:border-red-500"
