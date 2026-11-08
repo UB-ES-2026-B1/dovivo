@@ -25,11 +25,22 @@ export async function SiteHeader() {
 
   return (
     <header className="border-b border-slate-200 bg-white">
-      <div className="container mx-auto flex h-16 items-center justify-between px-4">
-        <Link href="/" className="text-2xl font-extrabold text-emerald-700">
+      {/*
+        Phones: two rows, so nothing overflows at 320-375 px. The logo and the account actions go
+        on the first row and the main links on the second (`order-last w-full`).
+        From `sm` up: one row, as before (logo on the left, links and account on the right).
+      */}
+      <div className="container mx-auto flex flex-wrap items-center justify-between gap-x-6 gap-y-2 px-4 py-3 sm:h-16 sm:flex-nowrap sm:py-0">
+        <Link
+          href="/"
+          className="shrink-0 text-2xl font-extrabold text-emerald-700"
+        >
           dovivo
         </Link>
-        <nav className="flex items-center gap-6 text-sm font-medium">
+        <nav
+          aria-label="Main"
+          className="order-last flex w-full items-center gap-6 text-sm font-medium sm:order-none sm:ml-auto sm:w-auto"
+        >
           {NAV.map((item) => (
             <Link
               key={item.href}
@@ -39,6 +50,8 @@ export async function SiteHeader() {
               {item.label}
             </Link>
           ))}
+        </nav>
+        <div className="flex items-center gap-4 text-sm font-medium whitespace-nowrap sm:gap-6">
           {session ? (
             <>
               <Link
@@ -64,7 +77,7 @@ export async function SiteHeader() {
               </Link>
             </>
           )}
-        </nav>
+        </div>
       </div>
     </header>
   );
