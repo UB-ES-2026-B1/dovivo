@@ -56,9 +56,11 @@ jobs:
     # Only after a push to development (a merged PR). Never on pull requests or main.
     if: github.event_name == 'push' && github.ref == 'refs/heads/development'
     runs-on: ubuntu-latest
+    env:
+      STAGING_URL: https://dovivo-staging-ahbzg9e9ghb8enb3.francecentral-01.azurewebsites.net
     environment:
       name: staging
-      url: ${{ steps.deploy.outputs.webapp-url }}
+      url: ${{ env.STAGING_URL }}
     permissions:
       contents: read
       packages: write
@@ -111,17 +113,14 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: docker run --rm -e DATABASE_URL dovivo-migrate
 
-      - name: Deploy to Azure Web App
-        id: deploy
-        uses: azure/webapps-deploy@v3
-        with:
-          app-name: dovivo-staging
-          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
-          images: ${{ env.IMAGE }}:${{ github.sha }}
+      - name: Ask Azure to pull the new image
+        env:
+          WEBHOOK_URL: ${{ secrets.AZURE_WEBHOOK_URL }}
+        run: curl --fail --silent --show-error -X POST "$WEBHOOK_URL"
 
       - name: Smoke test /api/health
         env:
-          URL: ${{ steps.deploy.outputs.webapp-url }}/api/health
+          URL: ${{ env.STAGING_URL }}/api/health
         run: |
           for i in $(seq 1 30); do
             code=$(curl -s -o /dev/null -w '%{http_code}' "$URL" || true)
