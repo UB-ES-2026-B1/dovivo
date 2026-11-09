@@ -33,6 +33,11 @@ from the PO backlog's REST codes, and the auth flows. Background: [ADR 0001](./a
   alt, width, height }`, or `null` if the listing has no photos). The cover is the photo marked
   `isCover`, or the lowest `position` if none is marked. Only `PUBLISHED`, not deleted listings,
   newest first. Next page: pass `nextCursor` back as `cursor` (`undefined` on the last page).
+- **Location filters (US-10)**: `property.list({ city, neighborhood })` match the whole name,
+  ignoring case, accents and the Catalan middle dot (`"sant marti"` finds `Sant Martí`,
+  `"parallel"` finds `Paral·lel`). Send the name as the user typed it; the API normalises it.
+  Internally both sides are compared on `citySearch` / `neighborhoodSearch`, which the API fills
+  on every write (`propertySearchColumns`) and which are never returned.
 - **Listing photos (detail)**: `property.byId` returns the gallery ordered by `position`; each
   image exposes `id`, `url`, `thumbnailUrl`, `alt`, `position`, `isCover`, `width`, `height`.
 - **Soft-deleted listings**: excluded from `list` and `mine`; `byId` and `publish`

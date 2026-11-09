@@ -20,7 +20,9 @@ export const propertyTypeSchema = z.enum([
 export const propertyFiltersSchema = z.object({
   listingType: listingTypeSchema.optional(),
   propertyType: propertyTypeSchema.optional(),
-  city: z.string().trim().min(1).optional(),
+  // City and neighbourhood match ignoring case and accents ("sant marti" finds "Sant Martí").
+  city: z.string().trim().min(1).max(100).optional(),
+  neighborhood: z.string().trim().min(1).max(100).optional(),
   minPriceCents: z.number().int().nonnegative().optional(),
   maxPriceCents: z.number().int().nonnegative().optional(),
   minBedrooms: z.number().int().nonnegative().optional(),

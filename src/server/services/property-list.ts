@@ -7,6 +7,7 @@ import {
   propertyCardSelect,
   toPropertyCard,
 } from "~/server/services/property-card";
+import { normalizeSearchText } from "~/server/services/search-text";
 
 /**
  * Public listing search (US-09). Pure function: the database is passed in, so the router, unit
@@ -28,6 +29,8 @@ export type PropertyListPage = {
 export function propertyListWhere({
   minPriceCents,
   maxPriceCents,
+  city,
+  neighborhood,
   ...filters
 }: Omit<PropertyFilters, "limit" | "cursor">): Prisma.PropertyWhereInput {
   return {
@@ -35,8 +38,11 @@ export function propertyListWhere({
     deletedAt: null,
     listingType: filters.listingType,
     propertyType: filters.propertyType,
-    // `city` is citext, so a plain equals is case-insensitive and uses the index.
-    city: filters.city,
+    // Compared on the normalised search keys (US-10): ignores case and accents, uses the index.
+    citySearch: city ? normalizeSearchText(city) : undefined,
+    neighborhoodSearch: neighborhood
+      ? normalizeSearchText(neighborhood)
+      : undefined,
     bedrooms: filters.minBedrooms ? { gte: filters.minBedrooms } : undefined,
     priceCents: { gte: minPriceCents, lte: maxPriceCents },
   };

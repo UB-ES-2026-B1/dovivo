@@ -212,3 +212,29 @@ describe("property.list", () => {
     // The query itself is covered by src/server/services/property-list.test.ts.
   });
 });
+
+describe("property.create", () => {
+  it("stores the search keys with the listing (US-10)", async () => {
+    fakeDb.property.create.mockResolvedValue({ id: "prop_1" });
+
+    await makeCaller(ownerSession).property.create({
+      title: "Pis a Sant Martí",
+      description: "Pis exterior amb balcó, a prop del metro i del parc.",
+      listingType: "SALE",
+      propertyType: "APARTMENT",
+      priceCents: 30_000_000,
+      address: "Carrer de Pujades, 100",
+      city: "L’Hospitalet de Llobregat",
+      province: "Barcelona",
+    });
+
+    expect(fakeDb.property.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        city: "L’Hospitalet de Llobregat",
+        citySearch: "l'hospitalet de llobregat",
+        neighborhoodSearch: null,
+        ownerId: "owner_1",
+      }) as unknown,
+    });
+  });
+});

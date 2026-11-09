@@ -12,6 +12,7 @@ import {
   publicProcedure,
 } from "~/server/api/trpc";
 import { listPropertyCards } from "~/server/services/property-list";
+import { propertySearchColumns } from "~/server/services/search-text";
 
 /**
  * Public image fields. Upload metadata (`mimeType`, `sizeBytes`) is internal and never sent to
@@ -77,7 +78,11 @@ export const propertyRouter = createTRPCRouter({
     .input(createPropertySchema)
     .mutation(({ ctx, input }) =>
       ctx.db.property.create({
-        data: { ...input, ownerId: ctx.session.user.id },
+        data: {
+          ...input,
+          ...propertySearchColumns(input),
+          ownerId: ctx.session.user.id,
+        },
       }),
     ),
 

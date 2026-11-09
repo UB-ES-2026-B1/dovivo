@@ -95,6 +95,10 @@ async function main() {
     ["Rent, max 50 per page", { listingType: "RENT", limit: 50 }],
     ["Rent in Barcelona", { listingType: "RENT", city: "barcelona" }],
     [
+      "Neighbourhood, no accents",
+      { city: "girona", neighborhood: "santa eugenia" },
+    ],
+    [
       "Sale, 3+ bedrooms, up to 400,000 €",
       { listingType: "SALE", minBedrooms: 3, maxPriceCents: 40_000_000 },
     ],

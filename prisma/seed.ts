@@ -21,6 +21,8 @@ import {
   type UserRole,
 } from "@prisma/client";
 
+import { propertySearchColumns } from "~/server/services/search-text";
+
 const SEED_EMAIL_DOMAIN = "seed.dovivo.test";
 
 const DEFAULT_COUNT = 1_000;
@@ -242,6 +244,7 @@ function buildProperty(
     address: `${random.pick(STREETS)}, ${random.int(1, 180)}`,
     neighborhood,
     city: place.city,
+    ...propertySearchColumns({ city: place.city, neighborhood }),
     province: place.province,
     postalCode: `${place.postalCode}${String(random.int(0, 999)).padStart(3, "0")}`,
     hasElevator: random.next() < 0.5,
