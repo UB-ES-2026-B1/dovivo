@@ -33,6 +33,14 @@ from the PO backlog's REST codes, and the auth flows. Background: [ADR 0001](./a
   alt, width, height }`, or `null` if the listing has no photos). The cover is the photo marked
   `isCover`, or the lowest `position` if none is marked. Only `PUBLISHED`, not deleted listings,
   newest first. Next page: pass `nextCursor` back as `cursor` (`undefined` on the last page).
+- **Listing detail (US-12)**: `property.byId({ id })` is public. It returns the listing's public
+  fields (`id`, `title`, `description`, `listingType`, `propertyType`, `status`, `priceCents`,
+  `currency`, `bedrooms`, `bathrooms`, `areaM2`, `floor`, `address`, `neighborhood`, `city`,
+  `province`, `postalCode`, `country`, `latitude`, `longitude`, `hasElevator`, `hasParking`,
+  `isFurnished`, `publishedAt`, `updatedAt`), `images` and `owner` (`{ id, name, image }`, never
+  the email or phone). Internal columns (`ownerId`, `createdAt`, `deletedAt`) are not sent.
+  Drafts are visible only to their owner; `RESERVED` and `CLOSED` listings stay visible so shared
+  links keep working.
 - **Listing photos (detail)**: `property.byId` returns the gallery ordered by `position`; each
   image exposes `id`, `url`, `thumbnailUrl`, `alt`, `position`, `isCover`, `width`, `height`.
 - **Soft-deleted listings**: excluded from `list` and `mine`; `byId` and `publish`
@@ -126,5 +134,5 @@ repeated here. These are extra gaps between the contract and the PO backlog:
 | --- | --- | --- |
 | 1 | **Page size**: `property.list` caps `limit` at **50** (default 20, contract §7); the PO backlog asks for `per_page` max **100**. Tied to contract §10 #5 (cursor vs numbered pages). | Pending PO confirmation |
 | 2 | **Publish immediately or draft first** (US-17): the contract creates a `DRAFT` (`property.create`) and makes it visible with `property.publish`; the PO's `POST /api/properties` may expect the listing to be visible right after creation. Can be solved in the UI by calling both. | Pending PO confirmation |
-| 3 | **Soft-deleted listing detail**: contract §7 only lists `NOT_FOUND` for `property.byId` when the listing is missing or someone else's draft. We also return `NOT_FOUND` when `deletedAt` is set (PO US-12), even for the owner. | Pol to confirm |
+| 3 | **Soft-deleted listing detail**: contract §7 only lists `NOT_FOUND` for `property.byId` when the listing is missing or someone else's draft. We also return `NOT_FOUND` when `deletedAt` is set (PO US-12), even for the owner. | Confirmed (US-12, #41) |
 | 4 | **Editable profile fields** (US-05): contract §7 says `user.updateMe` edits "nom, email i telèfon"; the PO subtask (#21) only allows the **name** and the **phone**. We follow #21: the email can't be changed. | Contract to update |
