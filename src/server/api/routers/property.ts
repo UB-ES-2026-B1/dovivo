@@ -16,6 +16,7 @@ import {
   toPropertyDetail,
 } from "~/server/services/property-detail";
 import { listPropertyCards } from "~/server/services/property-list";
+import { propertySearchColumns } from "~/server/services/search-text";
 
 export const propertyRouter = createTRPCRouter({
   /**
@@ -63,7 +64,11 @@ export const propertyRouter = createTRPCRouter({
     .input(createPropertySchema)
     .mutation(({ ctx, input }) =>
       ctx.db.property.create({
-        data: { ...input, ownerId: ctx.session.user.id },
+        data: {
+          ...input,
+          ...propertySearchColumns(input),
+          ownerId: ctx.session.user.id,
+        },
       }),
     ),
 

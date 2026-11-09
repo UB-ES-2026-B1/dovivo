@@ -31,7 +31,9 @@ const dbIntSchema = z.number().int().max(DB_INT_MAX);
 export const propertyFiltersSchema = z.object({
   listingType: listingTypeSchema.optional(),
   propertyType: propertyTypeSchema.optional(),
-  city: z.string().trim().min(1).optional(),
+  // City and neighbourhood match ignoring case and accents ("sant marti" finds "Sant Martí").
+  city: z.string().trim().min(1).max(100).optional(),
+  neighborhood: z.string().trim().min(1).max(100).optional(),
   // Compared against `Int` columns: a bigger number would make Postgres fail with a 500.
   minPriceCents: dbIntSchema.nonnegative().optional(),
   maxPriceCents: dbIntSchema.nonnegative().optional(),

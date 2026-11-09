@@ -97,6 +97,12 @@ model Property {
   latitude     Float?
   longitude    Float?
 
+  // Search keys (US-10): `city` / `neighborhood` in lower case, without accents or punctuation
+  // (see normalizeSearchText). Filled by the API on every write, so "sant marti" finds
+  // "Sant Martí" with a plain indexed equals.
+  citySearch         String
+  neighborhoodSearch String?
+
   hasElevator Boolean @default(false)
   hasParking  Boolean @default(false)
   isFurnished Boolean @default(false)
@@ -119,10 +125,10 @@ model Property {
   @@unique([id, ownerId])
   @@index([status, listingType, propertyType])
   @@index([status, priceCents])
-  @@index([city])
+  @@index([citySearch])
   @@index([province])
   @@index([postalCode])
-  @@index([neighborhood])
+  @@index([neighborhoodSearch])
   @@index([latitude, longitude])
   // Default search order (`list`): PUBLISHED listings, newest first, `id` as tie-breaker.
   @@index([status, publishedAt(sort: Desc), id(sort: Desc)])

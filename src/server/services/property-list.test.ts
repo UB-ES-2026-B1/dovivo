@@ -63,6 +63,33 @@ describe("listPropertyCards", () => {
     );
   });
 
+  it("filters city and neighbourhood ignoring case and accents (US-10)", async () => {
+    await list({
+      city: "  SANT CUGAT del Vallès ",
+      neighborhood: "Sant Martí",
+    });
+
+    expect(fakeDb.property.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          citySearch: "sant cugat del valles",
+          neighborhoodSearch: "sant marti",
+        }) as unknown,
+      }),
+    );
+  });
+
+  it("does not filter by location when none is given", async () => {
+    await list();
+
+    const [args] = fakeDb.property.findMany.mock.calls[0] as [
+      { where: Record<string, unknown> },
+    ];
+    expect(args.where.citySearch).toBeUndefined();
+    expect(args.where.neighborhoodSearch).toBeUndefined();
+    expect(args.where).not.toHaveProperty("city");
+  });
+
   it("selects only the card fields and the cover photo", async () => {
     await list();
 
