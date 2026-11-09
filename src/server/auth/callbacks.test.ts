@@ -138,8 +138,13 @@ describe("createAuthorize", () => {
 
 describe("createJwtCallback", () => {
   const jwtCallback = createJwtCallback({ db });
-  // At sign-in the token doesn't have `id` / `role` yet; the callback adds them.
-  const freshToken = { sub: "user_1", email: "ada@example.com" } as JWT;
+  // At sign-in the token doesn't have `id` / `role` yet; the callback adds them. Auth.js fills
+  // `name` from the user before calling it.
+  const freshToken = {
+    sub: "user_1",
+    name: "Ada",
+    email: "ada@example.com",
+  } as JWT;
   const signedInToken = { ...freshToken, id: "user_1", role: "USER" } as JWT;
 
   it("copies id and role from a Credentials user (returned by authorize)", async () => {
@@ -183,12 +188,16 @@ describe("createJwtCallback", () => {
   });
 
   it("keeps the token on later requests while the account is fine", async () => {
-    fakeDb.user.findUnique.mockResolvedValue({ blockedAt: null, role: "USER" });
+    fakeDb.user.findUnique.mockResolvedValue({
+      blockedAt: null,
+      role: "USER",
+      name: "Ada",
+    });
 
     expect(await jwtCallback({ token: signedInToken })).toBe(signedInToken);
     expect(fakeDb.user.findUnique).toHaveBeenCalledWith({
       where: { id: "user_1" },
-      select: { blockedAt: true, role: true },
+      select: { blockedAt: true, role: true, name: true },
     });
   });
 
@@ -197,6 +206,7 @@ describe("createJwtCallback", () => {
     fakeDb.user.findUnique.mockResolvedValue({
       blockedAt: null,
       role: "ADMIN",
+      name: "Ada",
     });
 
     expect(await jwtCallback({ token: signedInToken })).toEqual({
@@ -205,10 +215,24 @@ describe("createJwtCallback", () => {
     });
   });
 
+  it("refreshes the name after a profile edit (US-05)", async () => {
+    fakeDb.user.findUnique.mockResolvedValue({
+      blockedAt: null,
+      role: "USER",
+      name: "Ada Lovelace",
+    });
+
+    expect(await jwtCallback({ token: signedInToken })).toEqual({
+      ...signedInToken,
+      name: "Ada Lovelace",
+    });
+  });
+
   it("ends the session of a user blocked after signing in", async () => {
     fakeDb.user.findUnique.mockResolvedValue({
       blockedAt: new Date(),
       role: "USER",
+      name: "Ada",
     });
     expect(await jwtCallback({ token: signedInToken })).toBeNull();
   });
