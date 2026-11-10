@@ -1,10 +1,20 @@
 import { describe, expect, it } from "vitest";
 
+import { propertyTypeSchema } from "~/lib/validators/property";
+
 import {
   cardFeatures,
   cardLocation,
+  detailAmenities,
+  detailFacts,
+  detailLocation,
   emptyListingsMessage,
+  listingStatusNotice,
+  listingTypeLabel,
+  loginToContactHref,
+  propertyTypeLabel,
 } from "./listing-text";
+import { safeCallbackUrl } from "./safe-callback-url";
 
 describe("cardLocation", () => {
   it("shows the neighbourhood before the city", () => {
@@ -55,6 +65,118 @@ describe("emptyListingsMessage", () => {
   it("has a general message when there is no filter", () => {
     expect(emptyListingsMessage()).toBe(
       "There are no homes listed right now. Check back soon.",
+    );
+  });
+});
+
+describe("listingTypeLabel", () => {
+  it("names the operation", () => {
+    expect(listingTypeLabel("SALE")).toBe("For sale");
+    expect(listingTypeLabel("RENT")).toBe("For rent");
+  });
+});
+
+describe("propertyTypeLabel", () => {
+  it("has a label for every property type", () => {
+    for (const type of propertyTypeSchema.options) {
+      expect(propertyTypeLabel(type)).toMatch(/^[A-Z][a-z]+$/);
+    }
+  });
+});
+
+describe("detailFacts", () => {
+  it("shows area, bedrooms, bathrooms and floor in that order", () => {
+    expect(
+      detailFacts({ areaM2: 85, bedrooms: 3, bathrooms: 2, floor: "3" }),
+    ).toEqual([
+      { label: "Area", value: "85 m²" },
+      { label: "Bedrooms", value: "3" },
+      { label: "Bathrooms", value: "2" },
+      { label: "Floor", value: "3" },
+    ]);
+  });
+
+  it("keeps 0 and skips the facts that aren't given", () => {
+    expect(
+      detailFacts({ areaM2: null, bedrooms: 0, bathrooms: null, floor: " " }),
+    ).toEqual([{ label: "Bedrooms", value: "0" }]);
+  });
+});
+
+describe("detailAmenities", () => {
+  it("lists only the extras the listing has", () => {
+    expect(
+      detailAmenities({
+        hasElevator: true,
+        hasParking: false,
+        isFurnished: true,
+      }),
+    ).toEqual(["Lift", "Furnished"]);
+    expect(
+      detailAmenities({
+        hasElevator: false,
+        hasParking: false,
+        isFurnished: false,
+      }),
+    ).toEqual([]);
+  });
+});
+
+describe("detailLocation", () => {
+  it("joins address, neighbourhood, postal code and city", () => {
+    expect(
+      detailLocation({
+        address: "Carrer de Verdi 12",
+        neighborhood: "Gràcia",
+        postalCode: "08012",
+        city: "Barcelona",
+        province: "Barcelona",
+      }),
+    ).toBe("Carrer de Verdi 12, Gràcia, 08012 Barcelona");
+  });
+
+  it("adds the province when it isn't the city and skips missing parts", () => {
+    expect(
+      detailLocation({
+        address: "Rambla 5",
+        neighborhood: null,
+        postalCode: null,
+        city: "Sant Cugat del Vallès",
+        province: "Barcelona",
+      }),
+    ).toBe("Rambla 5, Sant Cugat del Vallès, Barcelona");
+  });
+});
+
+describe("listingStatusNotice", () => {
+  it("shows nothing for a published listing", () => {
+    expect(listingStatusNotice("PUBLISHED", "SALE")).toBeNull();
+  });
+
+  it("says when a home is reserved, sold or rented, or still a draft", () => {
+    expect(listingStatusNotice("RESERVED", "SALE")).toBe(
+      "This home is reserved.",
+    );
+    expect(listingStatusNotice("CLOSED", "SALE")).toMatch(/sold/);
+    expect(listingStatusNotice("CLOSED", "RENT")).toMatch(/rented/);
+    expect(listingStatusNotice("DRAFT", "RENT")).toMatch(/only you/);
+  });
+});
+
+describe("loginToContactHref", () => {
+  it("goes to the login and back to the listing", () => {
+    expect(loginToContactHref("clx123")).toBe(
+      "/login?callbackUrl=%2Fproperties%2Fclx123",
+    );
+  });
+
+  it("is accepted by the login's callbackUrl check", () => {
+    const callbackUrl = new URL(
+      loginToContactHref("clx123"),
+      "http://localhost",
+    ).searchParams.get("callbackUrl");
+    expect(safeCallbackUrl(callbackUrl ?? undefined)).toBe(
+      "/properties/clx123",
     );
   });
 });
