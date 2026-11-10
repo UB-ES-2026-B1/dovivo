@@ -25,12 +25,25 @@ from the PO backlog's REST codes, and the auth flows. Background: [ADR 0001](./a
 - **superjson**: `Date` fields arrive as `Date` objects, not strings.
 - **Money** is always integer cents (`priceCents`). Format in the UI only.
 - Never `fetch("/api/trpc/...")` by hand (AGENTS rule 2).
-- **Role**: `session.user.role` from `auth()` is refreshed from the DB on every request (the
-  `jwt` callback, ADR 0002), in tRPC and in server components.
-- **Listing photos**: each image exposes `id`, `url`, `thumbnailUrl`, `alt`, `position`,
-  `isCover`, `width`, `height`. `property.list` returns one image per listing, the cover
-  (`isCover` first, then lowest `position` if none is marked); `property.byId` returns the
-  gallery ordered by `position`.
+- **Role and name**: `session.user.role` and `session.user.name` from `auth()` are refreshed from
+  the DB on every request (the `jwt` callback, ADR 0002), in tRPC and in server components, so a
+  profile edit (`user.updateMe`) shows up without signing in again.
+- **Listing cards (US-09)**: `property.list` returns `{ items, nextCursor }`, where each item
+  is a card with only `id`, `title`, `listingType`, `propertyType`, `priceCents`, `currency`,
+  `areaM2`, `bedrooms`, `neighborhood`, `city`, `province` and `cover` (`{ url, thumbnailUrl,
+  alt, width, height }`, or `null` if the listing has no photos). The cover is the photo marked
+  `isCover`, or the lowest `position` if none is marked. Only `PUBLISHED`, not deleted listings,
+  newest first. Next page: pass `nextCursor` back as `cursor` (`undefined` on the last page).
+- **Listing detail (US-12)**: `property.byId({ id })` is public. It returns the listing's public
+  fields (`id`, `title`, `description`, `listingType`, `propertyType`, `status`, `priceCents`,
+  `currency`, `bedrooms`, `bathrooms`, `areaM2`, `floor`, `address`, `neighborhood`, `city`,
+  `province`, `postalCode`, `country`, `latitude`, `longitude`, `hasElevator`, `hasParking`,
+  `isFurnished`, `publishedAt`, `updatedAt`), `images` and `owner` (`{ id, name, image }`, never
+  the email or phone). Internal columns (`ownerId`, `createdAt`, `deletedAt`) are not sent.
+  Drafts are visible only to their owner; `RESERVED` and `CLOSED` listings stay visible so shared
+  links keep working.
+- **Listing photos (detail)**: `property.byId` returns the gallery ordered by `position`; each
+  image exposes `id`, `url`, `thumbnailUrl`, `alt`, `position`, `isCover`, `width`, `height`.
 - **Soft-deleted listings**: excluded from `list` and `mine`; `byId` and `publish`
   answer `NOT_FOUND`, also for the owner.
 
@@ -105,6 +118,14 @@ JWT revocation gap in ADR 0002).
 `safeCallbackUrl` from `~/app/_lib/safe-callback-url` (same-origin paths only, no open
 redirects); never check it by hand with `startsWith("/")`. Full profile data (e.g. `phone`) comes from `user.me` (US-04).
 
+**Edit profile (US-05)**: `api.user.updateMe.useMutation()` with `{ name?, phone? }`, validated by
+`updateProfileSchema` from `src/lib/validators/user.ts`. Only the name and the phone are
+editable; omitted fields stay unchanged and `phone: ""` (or `null`) clears it. Phones are stored
+without spaces or dashes. It returns the same fields as `user.me`, so on success update the cache
+with `const utils = api.useUtils()` and `utils.user.me.setData(undefined, updated)` (or call
+`utils.user.me.invalidate()`) to show the changes right away. An invalid field gives `BAD_REQUEST` with per-field errors in
+`error.data.zodError.fieldErrors` and saves nothing.
+
 ## Open points
 
 Pending decisions already listed in contract §10 and in §7 "Contracte API (T-06)" are not
@@ -114,4 +135,5 @@ repeated here. These are extra gaps between the contract and the PO backlog:
 | --- | --- | --- |
 | 1 | **Page size**: `property.list` caps `limit` at **50** (default 20, contract §7); the PO backlog asks for `per_page` max **100**. Tied to contract §10 #5 (cursor vs numbered pages). | Pending PO confirmation |
 | 2 | **Publish immediately or draft first** (US-17): the contract creates a `DRAFT` (`property.create`) and makes it visible with `property.publish`; the PO's `POST /api/properties` may expect the listing to be visible right after creation. Can be solved in the UI by calling both. | Pending PO confirmation |
-| 3 | **Soft-deleted listing detail**: contract §7 only lists `NOT_FOUND` for `property.byId` when the listing is missing or someone else's draft. We also return `NOT_FOUND` when `deletedAt` is set (PO US-12), even for the owner. | Pol to confirm |
+| 3 | **Soft-deleted listing detail**: contract §7 only lists `NOT_FOUND` for `property.byId` when the listing is missing or someone else's draft. We also return `NOT_FOUND` when `deletedAt` is set (PO US-12), even for the owner. | Confirmed (US-12, #41) |
+| 4 | **Editable profile fields** (US-05): contract §7 says `user.updateMe` edits "nom, email i telèfon"; the PO subtask (#21) only allows the **name** and the **phone**. We follow #21: the email can't be changed. | Contract to update |

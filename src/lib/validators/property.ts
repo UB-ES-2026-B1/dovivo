@@ -17,6 +17,11 @@ export const propertyTypeSchema = z.enum([
   "OTHER",
 ]);
 
+/** Identifies one listing (detail page, publish...). Ids are cuids, so 50 chars is plenty. */
+export const propertyIdSchema = z.object({
+  id: z.string().trim().min(1).max(50),
+});
+
 export const propertyFiltersSchema = z.object({
   listingType: listingTypeSchema.optional(),
   propertyType: propertyTypeSchema.optional(),
@@ -49,6 +54,7 @@ export const createPropertySchema = z.object({
   postalCode: z.string().trim().optional(),
 });
 
+export type PropertyIdInput = z.infer<typeof propertyIdSchema>;
 export type PropertyFilters = z.infer<typeof propertyFiltersSchema>;
 export type SavedSearchFilters = z.infer<typeof savedSearchFiltersSchema>;
 export type CreatePropertyInput = z.infer<typeof createPropertySchema>;

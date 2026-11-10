@@ -1,101 +1,48 @@
-import { type Prisma } from "@prisma/client";
 import { TRPCError } from "@trpc/server";
-import { z } from "zod";
 
 import {
   createPropertySchema,
   propertyFiltersSchema,
+  propertyIdSchema,
 } from "~/lib/validators/property";
 import {
   createTRPCRouter,
   protectedProcedure,
   publicProcedure,
 } from "~/server/api/trpc";
-
-/**
- * Public image fields. Upload metadata (`mimeType`, `sizeBytes`) is internal and never sent to
- * clients.
- */
-const publicImageSelect = {
-  id: true,
-  url: true,
-  thumbnailUrl: true,
-  alt: true,
-  position: true,
-  isCover: true,
-  width: true,
-  height: true,
-} satisfies Prisma.PropertyImageSelect;
-
-/** Gallery order. `position` is unique per listing, so the order is deterministic. */
-const galleryOrderBy = {
-  position: "asc",
-} satisfies Prisma.PropertyImageOrderByWithRelationInput;
-
-/** The cover photo first; falls back to the first gallery photo if none is marked as cover. */
-const coverFirstOrderBy = [
-  { isCover: "desc" },
-  { position: "asc" },
-] satisfies Prisma.PropertyImageOrderByWithRelationInput[];
+import {
+  canViewPropertyDetail,
+  propertyDetailSelect,
+  toPropertyDetail,
+} from "~/server/services/property-detail";
+import { listPropertyCards } from "~/server/services/property-list";
 
 export const propertyRouter = createTRPCRouter({
-  /** Public search used by the /buy and /rent pages. Cursor-based pagination. */
+  /**
+   * Public search used by the /buy and /rent pages (US-09): published listings as cards (see
+   * `propertyCardSelect`), newest first, cursor-based pagination.
+   */
   list: publicProcedure
     .input(propertyFiltersSchema)
-    .query(async ({ ctx, input }) => {
-      const { limit, cursor, minPriceCents, maxPriceCents, ...filters } = input;
+    .query(({ ctx, input }) => listPropertyCards(ctx.db, input)),
 
-      const items = await ctx.db.property.findMany({
-        where: {
-          status: "PUBLISHED",
-          deletedAt: null,
-          listingType: filters.listingType,
-          propertyType: filters.propertyType,
-          // `city` is citext, so a plain equals is case-insensitive and uses the index.
-          city: filters.city,
-          bedrooms: filters.minBedrooms
-            ? { gte: filters.minBedrooms }
-            : undefined,
-          priceCents: { gte: minPriceCents, lte: maxPriceCents },
-        },
-        include: {
-          // Only the cover is needed for the listing card.
-          images: {
-            select: publicImageSelect,
-            orderBy: coverFirstOrderBy,
-            take: 1,
-          },
-        },
-        // `id` tie-breaker keeps cursor pagination stable when publishedAt is equal.
-        orderBy: [{ publishedAt: "desc" }, { id: "desc" }],
-        take: limit + 1,
-        cursor: cursor ? { id: cursor } : undefined,
-      });
-
-      const nextCursor = items.length > limit ? items.pop()?.id : undefined;
-      return { items, nextCursor };
-    }),
-
+  /**
+   * Public listing detail (US-12): every public field, the gallery ordered by `position` and the
+   * advertiser's name and avatar (never their contact data). `NOT_FOUND` when the listing is
+   * missing, soft-deleted (also for its owner) or someone else's draft.
+   */
   byId: publicProcedure
-    .input(z.object({ id: z.string() }))
+    .input(propertyIdSchema)
     .query(async ({ ctx, input }) => {
       const property = await ctx.db.property.findUnique({
         where: { id: input.id },
-        include: {
-          images: { select: publicImageSelect, orderBy: galleryOrderBy },
-          owner: { select: { id: true, name: true, image: true } },
-        },
+        select: propertyDetailSelect,
       });
 
-      // Soft-deleted listings are hidden from everyone, including the owner.
-      if (!property || property.deletedAt) {
+      if (!property || !canViewPropertyDetail(property, ctx.session?.user.id)) {
         throw new TRPCError({ code: "NOT_FOUND" });
       }
-      const isOwner = property.ownerId === ctx.session?.user.id;
-      if (property.status === "DRAFT" && !isOwner) {
-        throw new TRPCError({ code: "NOT_FOUND" });
-      }
-      return property;
+      return toPropertyDetail(property);
     }),
 
   /** Listings owned by the logged-in user (dashboard). */
@@ -116,7 +63,7 @@ export const propertyRouter = createTRPCRouter({
     ),
 
   publish: protectedProcedure
-    .input(z.object({ id: z.string() }))
+    .input(propertyIdSchema)
     .mutation(async ({ ctx, input }) => {
       // Check and update in a single statement so two concurrent calls can't both publish, and a
       // RESERVED/CLOSED listing never goes back to PUBLISHED with a fresh publishedAt.
