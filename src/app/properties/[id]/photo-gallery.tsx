@@ -17,7 +17,7 @@ export function PhotoGallery({
   images: GalleryImage[];
   title: string;
 }) {
-  const [index, setIndex] = useState(0);
+  const [selectedIndex, setIndex] = useState(0);
 
   if (images.length === 0) {
     return (
@@ -28,8 +28,10 @@ export function PhotoGallery({
   }
 
   const count = images.length;
-  // Out of range only if the list shrinks; fall back to the first photo.
-  const current = images[index] ?? images[0]!;
+  // Out of range only if the list shrinks: fall back to the first photo, and use the same index
+  // for the photo, the counter and the selected thumbnail so they always agree.
+  const index = selectedIndex < count ? selectedIndex : 0;
+  const current = images[index]!;
   const show = (next: number) => setIndex((next + count) % count);
   const altFor = (image: GalleryImage, n: number) =>
     image.alt?.trim() ? image.alt : `${title}, photo ${n} of ${count}`;
@@ -38,6 +40,10 @@ export function PhotoGallery({
     <section
       aria-label="Photos"
       aria-roledescription="carousel"
+      // Focusable when there is more than one photo, so the arrow keys work after tabbing to the
+      // gallery itself, not only from its buttons.
+      tabIndex={count > 1 ? 0 : undefined}
+      className="rounded-xl focus-visible:ring-2 focus-visible:ring-emerald-700 focus-visible:ring-offset-2 focus-visible:outline-none"
       onKeyDown={(event) => {
         if (event.key === "ArrowLeft") show(index - 1);
         if (event.key === "ArrowRight") show(index + 1);
