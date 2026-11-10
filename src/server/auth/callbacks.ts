@@ -100,7 +100,8 @@ export type JwtCallbackDeps = {
  * On every later read the account is re-checked in the DB, because JWTs can't be revoked: a
  * deleted or blocked user gets `null`, which makes Auth.js drop the session and clear the cookie,
  * so blocking takes effect on the next request everywhere (tRPC, server components, `/api/auth`).
- * The role is refreshed from the DB at the same time.
+ * The role and the name are refreshed from the DB at the same time, so a promotion or a profile
+ * edit (`user.updateMe`, US-05) shows up in `session.user` without signing in again.
  */
 export function createJwtCallback({ db }: JwtCallbackDeps) {
   return async ({
@@ -124,19 +125,21 @@ export function createJwtCallback({ db }: JwtCallbackDeps) {
 
     const current = await db.user.findUnique({
       where: { id: token.id },
-      select: { blockedAt: true, role: true },
+      select: { blockedAt: true, role: true, name: true },
     });
     if (!current || current.blockedAt) return null;
 
-    return current.role === token.role
+    // Auth.js copies `token.name` to `session.user.name`.
+    return current.role === token.role && current.name === token.name
       ? token
-      : { ...token, role: current.role };
+      : { ...token, role: current.role, name: current.name };
   };
 }
 
 /**
- * Exposes `id` and `role` from the token on `session.user`. The `jwt` callback runs first and
- * refreshes the role from the DB, so it is current on every request.
+ * Exposes `id` and `role` from the token on `session.user` (Auth.js already sets `name`, `email`
+ * and `image`). The `jwt` callback runs first and refreshes the role and the name from the DB, so
+ * they are current on every request.
  */
 export function sessionCallback({
   session,

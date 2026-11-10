@@ -25,8 +25,9 @@ from the PO backlog's REST codes, and the auth flows. Background: [ADR 0001](./a
 - **superjson**: `Date` fields arrive as `Date` objects, not strings.
 - **Money** is always integer cents (`priceCents`). Format in the UI only.
 - Never `fetch("/api/trpc/...")` by hand (AGENTS rule 2).
-- **Role**: `session.user.role` from `auth()` is refreshed from the DB on every request (the
-  `jwt` callback, ADR 0002), in tRPC and in server components.
+- **Role and name**: `session.user.role` and `session.user.name` from `auth()` are refreshed from
+  the DB on every request (the `jwt` callback, ADR 0002), in tRPC and in server components, so a
+  profile edit (`user.updateMe`) shows up without signing in again.
 - **Listing cards (US-09)**: `property.list` returns `{ items, nextCursor }`, where each item
   is a card with only `id`, `title`, `listingType`, `propertyType`, `priceCents`, `currency`,
   `areaM2`, `bedrooms`, `neighborhood`, `city`, `province` and `cover` (`{ url, thumbnailUrl,
