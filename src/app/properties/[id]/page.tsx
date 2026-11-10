@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { cache } from "react";
 
 import {
+  cardLocation,
   detailAmenities,
   detailFacts,
   detailLocation,
@@ -64,6 +65,10 @@ export default async function PropertyPage({ params }: Props) {
   const facts = detailFacts(property);
   const amenities = detailAmenities(property);
   const notice = listingStatusNotice(property.status, property.listingType);
+  const price = formatPrice(property.priceCents, {
+    currency: property.currency,
+    listingType: property.listingType,
+  });
 
   return (
     <main className="container mx-auto px-4 py-8">
@@ -88,7 +93,15 @@ export default async function PropertyPage({ params }: Props) {
             <h1 className="mt-1 text-2xl font-bold break-words sm:text-3xl">
               {property.title}
             </h1>
-            <p className="mt-2 text-slate-600">{detailLocation(property)}</p>
+            {/* Short location here; the full address is in the Location section below. */}
+            <p className="mt-2 text-slate-600">{cardLocation(property)}</p>
+            {/*
+              On one column the aside (price card) ends up below the whole description, so the
+              price is repeated here for phones and tablets. Only one of the two is ever displayed.
+            */}
+            <p className="mt-3 text-2xl font-bold text-slate-900 lg:hidden">
+              {price}
+            </p>
           </div>
 
           {facts.length > 0 && (
@@ -141,16 +154,9 @@ export default async function PropertyPage({ params }: Props) {
         </div>
 
         <aside className="space-y-4 lg:sticky lg:top-6 lg:self-start">
-          <div className="rounded-xl border border-slate-200 bg-white p-5">
-            <p className="text-sm text-slate-500">
-              {listingTypeLabel(property.listingType)}
-            </p>
-            <p className="mt-1 text-3xl font-bold text-slate-900">
-              {formatPrice(property.priceCents, {
-                currency: property.currency,
-                listingType: property.listingType,
-              })}
-            </p>
+          <div className="hidden rounded-xl border border-slate-200 bg-white p-5 lg:block">
+            <p className="text-sm text-slate-500">Price</p>
+            <p className="mt-1 text-3xl font-bold text-slate-900">{price}</p>
           </div>
           <AdvertiserCard
             owner={property.owner}
