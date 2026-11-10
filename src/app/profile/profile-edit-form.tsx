@@ -20,7 +20,8 @@ type Props = {
 /**
  * Profile edit mode (US-05.F1): prefilled with the current name and phone, per-field errors and a
  * Cancel button. The email is shown but can't be changed (#21). On save the returned profile is
- * written to the `user.me` cache, so the page shows it without reloading (US-05.F2).
+ * written to the `user.me` cache, so the page shows it without reloading, and the server components
+ * are refreshed so the header shows the new name too (US-05.F2).
  */
 export function ProfileEditForm({ user, onCancel, onSaved }: Props) {
   const router = useRouter();
@@ -31,6 +32,9 @@ export function ProfileEditForm({ user, onCancel, onSaved }: Props) {
   const updateMe = api.user.updateMe.useMutation({
     onSuccess: (updated) => {
       utils.user.me.setData(undefined, updated);
+      // Re-render the server components (the header) so they read the new name from
+      // `session.user.name`. Client state, like the confirmation, is kept.
+      router.refresh();
       onSaved();
     },
     onError: (error) => {

@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { primaryButtonClass } from "~/app/_components/button-styles";
 import { SignOutSubmit } from "~/app/_components/sign-out-submit";
+import { accountLabel } from "~/app/_lib/account-label";
 import { auth, signOut } from "~/server/auth";
 
 const NAV = [
@@ -54,11 +55,18 @@ export async function SiteHeader() {
         <div className="flex items-center gap-4 text-sm font-medium whitespace-nowrap sm:gap-6">
           {session ? (
             <>
+              {/*
+                The user's name (US-05.F2): `session.user.name` is refreshed from the DB on every
+                request, and the profile form calls `router.refresh()` after saving, so a new name
+                shows up here at once. Long names are cut so the row never overflows on phones.
+              */}
               <Link
                 href="/profile"
-                className="text-slate-700 hover:text-emerald-700"
+                title={accountLabel(session.user.name)}
+                className="max-w-40 truncate text-slate-700 hover:text-emerald-700"
               >
-                My profile
+                <span className="sr-only">My profile: </span>
+                {accountLabel(session.user.name)}
               </Link>
               <form action={signOutAction}>
                 <SignOutSubmit />
