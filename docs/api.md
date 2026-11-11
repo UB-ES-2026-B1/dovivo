@@ -126,6 +126,16 @@ with `const utils = api.useUtils()` and `utils.user.me.setData(undefined, update
 `utils.user.me.invalidate()`) to show the changes right away. An invalid field gives `BAD_REQUEST` with per-field errors in
 `error.data.zodError.fieldErrors` and saves nothing.
 
+**Publish a listing (US-17)**: two calls. `api.property.create.useMutation()` with the form values
+(validated by `createPropertySchema`) creates a `DRAFT` that only the owner sees and returns it with
+its `id`; then `api.property.publish.useMutation()` with `{ id }` makes it visible in the list and
+the search. Photos (US-18) will be added between the two calls. Required: `title` (5-120),
+`description` (20-5000), `listingType`, `propertyType`, `priceCents` (> 0), `address`, `city`
+and `province`. Optional: `bedrooms` and `bathrooms` (≥ 0), `areaM2` (> 0), `floor`,
+`neighborhood`, `postalCode` (5 digits) and the `hasElevator` / `hasParking` / `isFurnished`
+flags; empty text fields (`""`) are stored as not set. An invalid field gives `BAD_REQUEST` with
+per-field errors and nothing is created. The owner is always the signed-in user.
+
 ## Open points
 
 Pending decisions already listed in contract §10 and in §7 "Contracte API (T-06)" are not
