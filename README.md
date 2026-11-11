@@ -352,7 +352,7 @@ flowchart LR
 | Branch | Purpose | Rules |
 | --- | --- | --- |
 | `main` | Stable branch used for demos and releases | Never touched directly. Protected. It only receives the release PR from `development` at the end of each sprint. |
-| `development` | Integration branch | Every task branch starts here and every PR targets it. |
+| `development` | Integration branch | Every task branch starts here and every PR targets it. Protected like `main` (same ruleset): no direct pushes, it can't be deleted (not even by the release PR merge) and PRs need green CI. |
 | `feat/…`, `fix/…`, `docs/…`, `chore/…` | One short-lived branch per task | Branch from `development`, open a small PR back, delete the branch after merging. |
 
 Flow: branch from `development` → small PR (the PR template loads automatically) → CI green → review by at least one other teammate → merge into `development`. Nobody merges their own PR. Mention the task in the PR title, e.g. `(T-01)` or `(US-02)`.
