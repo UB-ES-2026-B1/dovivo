@@ -4,6 +4,7 @@ import { type Session } from "next-auth";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ZodError } from "zod";
 
+import { validListing } from "~/lib/validators/property.fixtures";
 import { createCaller } from "~/server/api/root";
 import { propertyDetailSelect } from "~/server/services/property-detail";
 
@@ -139,18 +140,11 @@ describe("property.byId", () => {
 
 describe("property.create", () => {
   const listing = {
-    title: "Pis lluminós a Gràcia",
-    description: "Pis de 80 m² amb balcó, molt a prop del metro i de botigues.",
-    listingType: "RENT" as const,
-    propertyType: "APARTMENT" as const,
-    priceCents: 120_000,
+    ...validListing,
     bedrooms: 3,
     bathrooms: 1,
     areaM2: 80,
-    address: "Carrer de Verdi, 10",
     neighborhood: "Vila de Gràcia",
-    city: "Barcelona",
-    province: "Barcelona",
   };
 
   it("returns UNAUTHORIZED without a session and never writes", async () => {
@@ -187,6 +181,33 @@ describe("property.create", () => {
 
     expect(fakeDb.property.create).toHaveBeenCalledWith({
       data: { ...listing, ownerId: "owner_1" },
+    });
+  });
+
+  it("saves the optional fields and stores empty texts as null, never as an empty string", async () => {
+    fakeDb.property.create.mockResolvedValue({ id: "prop_new" });
+
+    await makeCaller(ownerSession).property.create({
+      ...validListing,
+      floor: " 3r ",
+      neighborhood: "",
+      postalCode: "",
+      hasElevator: true,
+      hasParking: false,
+      isFurnished: true,
+    });
+
+    expect(fakeDb.property.create).toHaveBeenCalledWith({
+      data: {
+        ...validListing,
+        floor: "3r",
+        neighborhood: null,
+        postalCode: null,
+        hasElevator: true,
+        hasParking: false,
+        isFurnished: true,
+        ownerId: "owner_1",
+      },
     });
   });
 
@@ -326,5 +347,12 @@ describe("property.list", () => {
       expect.objectContaining({ id: "prop_1", cover: null }),
     ]);
     // The query itself is covered by src/server/services/property-list.test.ts.
+  });
+
+  it("returns BAD_REQUEST for a price filter that doesn't fit an Int, without querying", async () => {
+    await expect(
+      makeCaller(null).property.list({ maxPriceCents: 3_000_000_000 }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    expect(fakeDb.property.findMany).not.toHaveBeenCalled();
   });
 });
