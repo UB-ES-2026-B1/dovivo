@@ -53,7 +53,12 @@ export const propertyRouter = createTRPCRouter({
     }),
   ),
 
-  /** Publish flow: creates a DRAFT owned by the current user. */
+  /**
+   * Publish flow, step 1 (US-17): creates a DRAFT owned by the current user. The client then adds
+   * photos (US-18) and calls `publish` to make it visible in the list and the search. The owner
+   * always comes from the session: `ownerId` or `status` in the input are stripped by zod and
+   * `ownerId` is set after the spread, so the body can't override it.
+   */
   create: protectedProcedure
     .input(createPropertySchema)
     .mutation(({ ctx, input }) =>
@@ -62,6 +67,7 @@ export const propertyRouter = createTRPCRouter({
       }),
     ),
 
+  /** Publish flow, step 2 (US-17): DRAFT → PUBLISHED. Only the owner. */
   publish: protectedProcedure
     .input(propertyIdSchema)
     .mutation(async ({ ctx, input }) => {

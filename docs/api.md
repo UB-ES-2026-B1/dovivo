@@ -34,6 +34,8 @@ from the PO backlog's REST codes, and the auth flows. Background: [ADR 0001](./a
   alt, width, height }`, or `null` if the listing has no photos). The cover is the photo marked
   `isCover`, or the lowest `position` if none is marked. Only `PUBLISHED`, not deleted listings,
   newest first. Next page: pass `nextCursor` back as `cursor` (`undefined` on the last page).
+  The `minPriceCents`, `maxPriceCents` and `minBedrooms` filters must be whole numbers from 0 to
+  `DB_INT_MAX` (2,147,483,647); anything bigger gives `BAD_REQUEST`.
 - **Listing detail (US-12)**: `property.byId({ id })` is public. It returns the listing's public
   fields (`id`, `title`, `description`, `listingType`, `propertyType`, `status`, `priceCents`,
   `currency`, `bedrooms`, `bathrooms`, `areaM2`, `floor`, `address`, `neighborhood`, `city`,
@@ -125,6 +127,21 @@ without spaces or dashes. It returns the same fields as `user.me`, so on success
 with `const utils = api.useUtils()` and `utils.user.me.setData(undefined, updated)` (or call
 `utils.user.me.invalidate()`) to show the changes right away. An invalid field gives `BAD_REQUEST` with per-field errors in
 `error.data.zodError.fieldErrors` and saves nothing.
+
+**Publish a listing (US-17)**: two calls. `api.property.create.useMutation()` with the form values
+(validated by `createPropertySchema`) creates a `DRAFT` that only the owner sees and returns it with
+its `id`; then `api.property.publish.useMutation()` with `{ id }` makes it visible in the list and
+the search. Photos (US-18) will be added between the two calls. Required: `title` (5-120),
+`description` (20-5000), `listingType`, `propertyType`, `priceCents` (> 0 and at most
+`DB_INT_MAX` = 2,147,483,647, i.e. ~21.47 M€), `address` (3-200), `city` and `province` (2-100).
+Optional: `bedrooms` and `bathrooms` (≥ 0), `areaM2` (> 0), `floor` (max 20), `neighborhood`
+(max 100), `postalCode` (5 digits starting with a province code, 01-52; spaces are removed) and
+the `hasElevator` / `hasParking` / `isFurnished` flags. Whole numbers are capped at `DB_INT_MAX`,
+exported from `src/lib/validators/property.ts`. Empty text fields (`""`) and `null` are stored
+as `null`. An invalid field gives `BAD_REQUEST` with per-field errors and nothing is created. The
+owner is always the signed-in user. Type the form with `CreatePropertyInput` (the input shape,
+before the transforms) and validate it with `createPropertySchema` to get the same errors as the
+server.
 
 ## Open points
 

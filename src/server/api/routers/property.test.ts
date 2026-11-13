@@ -1,7 +1,10 @@
 import { type PrismaClient } from "@prisma/client";
+import { type TRPCError } from "@trpc/server";
 import { type Session } from "next-auth";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { ZodError } from "zod";
 
+import { validListing } from "~/lib/validators/property.fixtures";
 import { createCaller } from "~/server/api/root";
 import { propertyDetailSelect } from "~/server/services/property-detail";
 
@@ -135,7 +138,109 @@ describe("property.byId", () => {
   });
 });
 
+describe("property.create", () => {
+  const listing = {
+    ...validListing,
+    bedrooms: 3,
+    bathrooms: 1,
+    areaM2: 80,
+    neighborhood: "Vila de Gràcia",
+  };
+
+  it("returns UNAUTHORIZED without a session and never writes", async () => {
+    await expect(
+      makeCaller(null).property.create(listing),
+    ).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+    expect(fakeDb.property.create).not.toHaveBeenCalled();
+  });
+
+  it("creates a DRAFT owned by the user in the session", async () => {
+    const created = { id: "prop_new", ...listing, ownerId: "owner_1" };
+    fakeDb.property.create.mockResolvedValue(created);
+
+    await expect(
+      makeCaller(ownerSession).property.create(listing),
+    ).resolves.toEqual(created);
+    // No status in `data`: the column defaults to DRAFT until `publish`.
+    expect(fakeDb.property.create).toHaveBeenCalledWith({
+      data: { ...listing, ownerId: "owner_1" },
+    });
+  });
+
+  it("ignores an owner, status or publish date sent in the body", async () => {
+    fakeDb.property.create.mockResolvedValue({ id: "prop_new" });
+
+    // Not allowed by the input type; a hand-crafted request could still send them.
+    const input = {
+      ...listing,
+      ownerId: "user_2",
+      status: "PUBLISHED",
+      publishedAt: new Date(),
+    } as typeof listing;
+    await makeCaller(ownerSession).property.create(input);
+
+    expect(fakeDb.property.create).toHaveBeenCalledWith({
+      data: { ...listing, ownerId: "owner_1" },
+    });
+  });
+
+  it("saves the optional fields and stores empty texts as null, never as an empty string", async () => {
+    fakeDb.property.create.mockResolvedValue({ id: "prop_new" });
+
+    await makeCaller(ownerSession).property.create({
+      ...validListing,
+      floor: " 3r ",
+      neighborhood: "",
+      postalCode: "",
+      hasElevator: true,
+      hasParking: false,
+      isFurnished: true,
+    });
+
+    expect(fakeDb.property.create).toHaveBeenCalledWith({
+      data: {
+        ...validListing,
+        floor: "3r",
+        neighborhood: null,
+        postalCode: null,
+        hasElevator: true,
+        hasParking: false,
+        isFurnished: true,
+        ownerId: "owner_1",
+      },
+    });
+  });
+
+  it.each([
+    ["a missing city", { city: undefined }, "city"],
+    ["a zero price", { priceCents: 0 }, "priceCents"],
+    ["a zero area", { areaM2: 0 }, "areaM2"],
+    ["negative bathrooms", { bathrooms: -1 }, "bathrooms"],
+  ])(
+    "rejects %s with BAD_REQUEST on that field and creates nothing",
+    async (_label, change, field) => {
+      const error: unknown = await makeCaller(ownerSession)
+        .property.create({ ...listing, ...change } as typeof listing)
+        .catch((e: unknown) => e);
+
+      expect(error).toMatchObject({ code: "BAD_REQUEST" });
+      // The error formatter sends this to the client as `data.zodError.fieldErrors`.
+      const cause = (error as TRPCError).cause;
+      expect(cause).toBeInstanceOf(ZodError);
+      expect((cause as ZodError).flatten().fieldErrors).toHaveProperty(field);
+      expect(fakeDb.property.create).not.toHaveBeenCalled();
+    },
+  );
+});
+
 describe("property.publish", () => {
+  it("returns UNAUTHORIZED without a session and never writes", async () => {
+    await expect(
+      makeCaller(null).property.publish({ id: "prop_1" }),
+    ).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+    expect(fakeDb.property.updateMany).not.toHaveBeenCalled();
+  });
+
   it("publishes a draft atomically, scoped to its owner", async () => {
     fakeDb.property.updateMany.mockResolvedValue({ count: 1 });
     fakeDb.property.findUniqueOrThrow.mockResolvedValue(baseProperty);
@@ -242,5 +347,12 @@ describe("property.list", () => {
       expect.objectContaining({ id: "prop_1", cover: null }),
     ]);
     // The query itself is covered by src/server/services/property-list.test.ts.
+  });
+
+  it("returns BAD_REQUEST for a price filter that doesn't fit an Int, without querying", async () => {
+    await expect(
+      makeCaller(null).property.list({ maxPriceCents: 3_000_000_000 }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    expect(fakeDb.property.findMany).not.toHaveBeenCalled();
   });
 });
