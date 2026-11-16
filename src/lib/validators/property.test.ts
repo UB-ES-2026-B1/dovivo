@@ -27,7 +27,14 @@ describe("savedSearchFiltersSchema", () => {
 });
 
 describe("propertyFiltersSchema", () => {
-  it.each(["minPriceCents", "maxPriceCents", "minBedrooms"])(
+  it.each([
+    "minPriceCents",
+    "maxPriceCents",
+    "minBedrooms",
+    "minBathrooms",
+    "minAreaM2",
+    "maxAreaM2",
+  ])(
     "rejects a %s that doesn't fit an Int and accepts the largest one",
     (field) => {
       expect(
@@ -38,6 +45,24 @@ describe("propertyFiltersSchema", () => {
       ).toBe(true);
     },
   );
+
+  it.each(["minAreaM2", "maxAreaM2"])(
+    "rejects a negative or decimal %s",
+    (field) => {
+      expect(propertyFiltersSchema.safeParse({ [field]: -1 }).success).toBe(
+        false,
+      );
+      expect(propertyFiltersSchema.safeParse({ [field]: 80.5 }).success).toBe(
+        false,
+      );
+    },
+  );
+
+  it("rejects a hasParking that is not a boolean", () => {
+    expect(propertyFiltersSchema.safeParse({ hasParking: "yes" }).success).toBe(
+      false,
+    );
+  });
 
   it("applies the same limit to saved searches", () => {
     expect(

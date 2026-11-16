@@ -38,6 +38,11 @@ export const propertyFiltersSchema = z.object({
   minPriceCents: dbIntSchema.nonnegative().optional(),
   maxPriceCents: dbIntSchema.nonnegative().optional(),
   minBedrooms: dbIntSchema.nonnegative().optional(),
+  minBathrooms: dbIntSchema.nonnegative().optional(),
+  minAreaM2: dbIntSchema.nonnegative().optional(),
+  maxAreaM2: dbIntSchema.nonnegative().optional(),
+  // Only `true` filters (with parking); `false` means "don't care", as an unticked checkbox.
+  hasParking: z.boolean().optional(),
   limit: z.number().int().min(1).max(50).default(20),
   cursor: z.string().optional(),
 });

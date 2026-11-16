@@ -28,14 +28,22 @@ from the PO backlog's REST codes, and the auth flows. Background: [ADR 0001](./a
 - **Role and name**: `session.user.role` and `session.user.name` from `auth()` are refreshed from
   the DB on every request (the `jwt` callback, ADR 0002), in tRPC and in server components, so a
   profile edit (`user.updateMe`) shows up without signing in again.
-- **Listing cards (US-09)**: `property.list` returns `{ items, nextCursor }`, where each item
+- **Listing cards (US-09)**: `property.list` returns `{ items, nextCursor, total }`, where each item
   is a card with only `id`, `title`, `listingType`, `propertyType`, `priceCents`, `currency`,
   `areaM2`, `bedrooms`, `neighborhood`, `city`, `province` and `cover` (`{ url, thumbnailUrl,
   alt, width, height }`, or `null` if the listing has no photos). The cover is the photo marked
   `isCover`, or the lowest `position` if none is marked. Only `PUBLISHED`, not deleted listings,
   newest first. Next page: pass `nextCursor` back as `cursor` (`undefined` on the last page).
-  The `minPriceCents`, `maxPriceCents` and `minBedrooms` filters must be whole numbers from 0 to
-  `DB_INT_MAX` (2,147,483,647); anything bigger gives `BAD_REQUEST`.
+  The `minPriceCents`, `maxPriceCents`, `minBedrooms`, `minBathrooms`, `minAreaM2` and
+  `maxAreaM2` filters must be whole numbers from 0 to `DB_INT_MAX` (2,147,483,647); anything
+  bigger gives `BAD_REQUEST`.
+- **Search filters (US-10)**: every filter of `property.list` is optional and they combine with AND:
+  `listingType`, `propertyType`, `minPriceCents` / `maxPriceCents`, `minBedrooms`, `minBathrooms`,
+  `minAreaM2` / `maxAreaM2` (bounds included), `hasParking` (only `true` filters: `false` or missing
+  means "don't care"), `city` and `neighborhood`. Listings without m² (or bathrooms) are left out
+  only when an area (or bathrooms) filter is sent. A minimum above the maximum is not an error, it
+  just returns nothing. `total` is the number of listings matching the filters across all pages (the
+  same on every page), for the results counter: read it from the first page.
 - **Listing detail (US-12)**: `property.byId({ id })` is public. It returns the listing's public
   fields (`id`, `title`, `description`, `listingType`, `propertyType`, `status`, `priceCents`,
   `currency`, `bedrooms`, `bathrooms`, `areaM2`, `floor`, `address`, `neighborhood`, `city`,

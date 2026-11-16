@@ -16,6 +16,7 @@ import { propertyDetailSelect } from "~/server/services/property-detail";
 const fakeDb = {
   property: {
     findMany: vi.fn(),
+    count: vi.fn(),
     findUnique: vi.fn(),
     findUniqueOrThrow: vi.fn(),
     create: vi.fn(),
@@ -364,10 +365,12 @@ describe("property.list", () => {
         images: [],
       },
     ]);
+    fakeDb.property.count.mockResolvedValue(1);
 
     const page = await makeCaller(null).property.list({ listingType: "SALE" });
 
     expect(page.nextCursor).toBeUndefined();
+    expect(page.total).toBe(1);
     expect(page.items).toEqual([
       expect.objectContaining({ id: "prop_1", cover: null }),
     ]);

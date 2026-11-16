@@ -10,7 +10,7 @@ import { listPropertyCards, type PropertyListDb } from "./property-list";
  * query arguments the service builds and on how it pages the rows returned.
  */
 
-const fakeDb = { property: { findMany: vi.fn() } };
+const fakeDb = { property: { findMany: vi.fn(), count: vi.fn() } };
 // Cast through `unknown` because Prisma's delegate methods are heavily generic.
 const db = fakeDb as unknown as PropertyListDb;
 
@@ -36,6 +36,7 @@ const makeRow = (id: string): PropertyCardRow => ({
 beforeEach(() => {
   vi.resetAllMocks();
   fakeDb.property.findMany.mockResolvedValue([]);
+  fakeDb.property.count.mockResolvedValue(0);
 });
 
 describe("listPropertyCards", () => {
@@ -78,6 +79,119 @@ describe("listPropertyCards", () => {
       }),
     );
   });
+
+  it("filters by area range (US-10)", async () => {
+    await list({ minAreaM2: 60, maxAreaM2: 120 });
+
+    expect(fakeDb.property.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          areaM2: { gte: 60, lte: 120 },
+        }) as unknown,
+      }),
+    );
+  });
+
+  it("filters by a minimum area alone", async () => {
+    await list({ minAreaM2: 60 });
+
+    const [args] = fakeDb.property.findMany.mock.calls[0] as [
+      { where: Record<string, unknown> },
+    ];
+    expect(args.where.areaM2).toEqual({ gte: 60, lte: undefined });
+  });
+
+  it("does not filter by area when none is given, so listings without m² still show", async () => {
+    await list();
+
+    const [args] = fakeDb.property.findMany.mock.calls[0] as [
+      { where: Record<string, unknown> },
+    ];
+    expect(args.where.areaM2).toBeUndefined();
+  });
+
+  it("combines every filter in the same query (US-10)", async () => {
+    await list({
+      listingType: "RENT",
+      propertyType: "APARTMENT",
+      minPriceCents: 80_000,
+      maxPriceCents: 150_000,
+      minBedrooms: 2,
+      minBathrooms: 1,
+      minAreaM2: 50,
+      maxAreaM2: 90,
+      hasParking: true,
+      city: "Barcelona",
+      neighborhood: "Gràcia",
+    });
+
+    expect(fakeDb.property.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          status: "PUBLISHED",
+          deletedAt: null,
+          listingType: "RENT",
+          propertyType: "APARTMENT",
+          citySearch: "barcelona",
+          neighborhoodSearch: "gracia",
+          bedrooms: { gte: 2 },
+          bathrooms: { gte: 1 },
+          priceCents: { gte: 80_000, lte: 150_000 },
+          areaM2: { gte: 50, lte: 90 },
+          hasParking: true,
+        },
+      }),
+    );
+  });
+
+  it("counts the whole search with the same filters, whatever the page (US-10)", async () => {
+    fakeDb.property.findMany.mockResolvedValue(["p2", "p1"].map(makeRow));
+    fakeDb.property.count.mockResolvedValue(42);
+
+    const page = await list({ listingType: "RENT", limit: 1, cursor: "p2" });
+
+    const [findArgs] = fakeDb.property.findMany.mock.calls[0] as [
+      { where: unknown },
+    ];
+    // No cursor, take or select: a count of every matching listing, not of this page.
+    expect(fakeDb.property.count).toHaveBeenCalledWith({
+      where: findArgs.where,
+    });
+    expect(page.total).toBe(42);
+  });
+
+  it("returns a zero total when nothing matches", async () => {
+    const page = await list({ city: "Enlloc" });
+
+    expect(page).toEqual({ items: [], nextCursor: undefined, total: 0 });
+  });
+
+  it("filters by a minimum number of bathrooms, and not at all when none is given", async () => {
+    await list({ minBathrooms: 2 });
+    await list();
+
+    const calls = fakeDb.property.findMany.mock.calls as [
+      { where: Record<string, unknown> },
+    ][];
+    expect(calls[0]?.[0].where.bathrooms).toEqual({ gte: 2 });
+    expect(calls[1]?.[0].where.bathrooms).toBeUndefined();
+  });
+
+  it.each([
+    ["true", true, true],
+    ["false (an unticked checkbox)", false, undefined],
+    ["missing", undefined, undefined],
+  ])(
+    "with hasParking %s, filters by parking only when true",
+    async (_label, hasParking, expected) => {
+      await list({ hasParking });
+
+      const [args] = fakeDb.property.findMany.mock.calls[0] as [
+        { where: Record<string, unknown> },
+      ];
+      expect(args.where.hasParking).toBe(expected);
+    },
+  );
 
   it("does not filter by location when none is given", async () => {
     await list();
