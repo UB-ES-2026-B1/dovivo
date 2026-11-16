@@ -100,7 +100,8 @@ model Property {
   // Search keys (US-10): `city` / `neighborhood` in lower case, without accents or punctuation
   // (see normalizeSearchText). Filled by the API on every write, so "sant marti" finds
   // "Sant Martí" with a plain indexed equals.
-  citySearch         String
+  // The default only covers an app version older than these columns (see the migration).
+  citySearch         String  @default("")
   neighborhoodSearch String?
 
   hasElevator Boolean @default(false)

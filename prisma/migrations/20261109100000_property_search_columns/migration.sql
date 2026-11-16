@@ -20,7 +20,11 @@ SET
         'aaaaaaaaaeeeeeeeeiiiiiiooooooouuuuuuucccnnnyysszzzdtrlll'''''''''),
         '[·.]', '', 'g'), '\s+', ' ', 'g')), '');
 
-ALTER TABLE "Property" ALTER COLUMN "citySearch" SET NOT NULL;
+-- The DEFAULT keeps the migration backwards compatible: CI applies it before the new app is
+-- running (and it stays if the deploy fails), and the previous app creates listings without
+-- `citySearch`. Such a listing just isn't found by city until it is saved again.
+ALTER TABLE "Property" ALTER COLUMN "citySearch" SET DEFAULT '',
+ALTER COLUMN "citySearch" SET NOT NULL;
 
 -- Filters now use the search keys, so the old indexes on the display columns are unused.
 -- DropIndex
