@@ -5,7 +5,7 @@
 ALTER TABLE "Property" ADD COLUMN "citySearch" TEXT,
 ADD COLUMN "neighborhoodSearch" TEXT;
 
--- Backfill with the same rules as `normalizeSearchText` (src/server/services/search-text.ts):
+-- Backfill with the same rules as `normalizeSearchText` (src/lib/search-text.ts):
 -- lower case, accents removed, typographic apostrophes as ', no middle dot or full stops, single
 -- spaces. Plain SQL instead of the `unaccent` extension, which managed Postgres may not allow.
 -- New rows get these values from the API.
@@ -26,12 +26,10 @@ SET
 ALTER TABLE "Property" ALTER COLUMN "citySearch" SET DEFAULT '',
 ALTER COLUMN "citySearch" SET NOT NULL;
 
--- Filters now use the search keys, so the old indexes on the display columns are unused.
--- DropIndex
-DROP INDEX "Property_city_idx";
-
--- DropIndex
-DROP INDEX "Property_neighborhood_idx";
+-- The old indexes on `city` and `neighborhood` stay for now: the previous app filters on those
+-- columns while the new one is being deployed. A follow-up migration, once this app is live, drops
+-- them, backfills again the rows the previous app created with `citySearch = ''` and removes the
+-- DEFAULT.
 
 -- CreateIndex
 CREATE INDEX "Property_citySearch_idx" ON "Property"("citySearch");

@@ -21,7 +21,7 @@ import {
   type UserRole,
 } from "@prisma/client";
 
-import { propertySearchColumns } from "~/server/services/search-text";
+import { propertySearchColumns } from "~/lib/search-text";
 
 const SEED_EMAIL_DOMAIN = "seed.dovivo.test";
 

@@ -7,7 +7,7 @@ import {
   propertyCardSelect,
   toPropertyCard,
 } from "~/server/services/property-card";
-import { normalizeSearchText } from "~/server/services/search-text";
+import { normalizeSearchText } from "~/lib/search-text";
 
 /**
  * Public listing search (US-09, filters from US-10). Pure function: the database is passed in, so the router, unit
@@ -23,8 +23,11 @@ export type PropertyListPage = {
   items: PropertyCard[];
   /** Pass it back as `cursor` to get the next page; `undefined` on the last page. */
   nextCursor: string | undefined;
-  /** Listings matching the filters across all pages, for the results counter (US-10). */
-  total: number;
+  /**
+   * Listings matching the filters across all pages, for the results counter (US-10). Only counted
+   * on the first page (no `cursor`): later pages return `undefined`, keep the first page's value.
+   */
+  total: number | undefined;
 };
 
 /** Only listings visitors can see: published and not soft-deleted. */
@@ -51,10 +54,11 @@ export function propertyListWhere({
     bedrooms: filters.minBedrooms ? { gte: filters.minBedrooms } : undefined,
     bathrooms: filters.minBathrooms ? { gte: filters.minBathrooms } : undefined,
     priceCents: { gte: minPriceCents, lte: maxPriceCents },
-    // `areaM2` is optional: only filter when asked, so listings without it are not dropped.
+    // `areaM2` is optional: only filter when asked, so listings without it are not dropped. A minimum
+    // of 0 means "no minimum", as for bedrooms and bathrooms (`areaM2 >= 0` would drop NULLs).
     areaM2:
-      minAreaM2 !== undefined || maxAreaM2 !== undefined
-        ? { gte: minAreaM2, lte: maxAreaM2 }
+      minAreaM2 || maxAreaM2 !== undefined
+        ? { gte: minAreaM2 === 0 ? undefined : minAreaM2, lte: maxAreaM2 }
         : undefined,
     hasParking: hasParking ? true : undefined,
   };
@@ -81,8 +85,8 @@ export async function listPropertyCards(
       take: limit + 1,
       cursor: cursor ? { id: cursor } : undefined,
     }),
-    // Same `where`, no cursor: the total of the whole search, whatever page is asked.
-    db.property.count({ where }),
+    // Same `where`, no cursor: the total of the whole search. "Load more" pages skip it.
+    cursor ? undefined : db.property.count({ where }),
   ]);
 
   const nextCursor = rows.length > limit ? rows.pop()?.id : undefined;

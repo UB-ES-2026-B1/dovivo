@@ -16,7 +16,7 @@ import {
   toPropertyDetail,
 } from "~/server/services/property-detail";
 import { listPropertyCards } from "~/server/services/property-list";
-import { propertySearchColumns } from "~/server/services/search-text";
+import { propertySearchColumns } from "~/lib/search-text";
 
 export const propertyRouter = createTRPCRouter({
   /**

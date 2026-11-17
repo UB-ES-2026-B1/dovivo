@@ -58,6 +58,27 @@ describe("propertyFiltersSchema", () => {
     },
   );
 
+  it.each([
+    ["city", "."],
+    ["city", "·"],
+    ["city", " .. "],
+    ["neighborhood", "."],
+    ["neighborhood", "·"],
+  ])("rejects a %s that is empty once normalised (%j)", (field, value) => {
+    expect(propertyFiltersSchema.safeParse({ [field]: value }).success).toBe(
+      false,
+    );
+  });
+
+  it("accepts a city with accents and a middle dot", () => {
+    expect(
+      propertyFiltersSchema.safeParse({
+        city: "L'Hospitalet",
+        neighborhood: "Paral·lel",
+      }).success,
+    ).toBe(true);
+  });
+
   it("rejects a hasParking that is not a boolean", () => {
     expect(propertyFiltersSchema.safeParse({ hasParking: "yes" }).success).toBe(
       false,
@@ -127,6 +148,8 @@ describe("createPropertySchema", () => {
     ["negative bathrooms", { bathrooms: -1 }, "bathrooms"],
     ["an unknown property type", { propertyType: "CASTLE" }, "propertyType"],
     ["a blank city", { city: "   " }, "city"],
+    ["a city of only punctuation", { city: ".." }, "city"],
+    ["a city of only middle dots", { city: "··" }, "city"],
     ["a too long address", { address: "a".repeat(201) }, "address"],
     ["a postal code with letters", { postalCode: "08A12" }, "postalCode"],
     ["a too short postal code", { postalCode: "8012" }, "postalCode"],

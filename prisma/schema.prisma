@@ -89,7 +89,7 @@ model Property {
 
   address      String
   neighborhood String?
-  // citext: case-insensitive equality that can still use the city index.
+  // Display value. Search filters on `citySearch`; citext is kept from before US-10.
   city         String  @db.Citext
   province     String
   postalCode   String?
@@ -100,7 +100,8 @@ model Property {
   // Search keys (US-10): `city` / `neighborhood` in lower case, without accents or punctuation
   // (see normalizeSearchText). Filled by the API on every write, so "sant marti" finds
   // "Sant Martí" with a plain indexed equals.
-  // The default only covers an app version older than these columns (see the migration).
+  // The default only covers an app version older than these columns (see the migration); a
+  // follow-up migration backfills those rows and removes it.
   citySearch         String  @default("")
   neighborhoodSearch String?
 
@@ -130,6 +131,9 @@ model Property {
   @@index([province])
   @@index([postalCode])
   @@index([neighborhoodSearch])
+  // Used only by the app before US-10 while it is deployed; dropped by a follow-up migration.
+  @@index([city])
+  @@index([neighborhood])
   @@index([latitude, longitude])
   // Default search order (`list`): PUBLISHED listings, newest first, `id` as tie-breaker.
   @@index([status, publishedAt(sort: Desc), id(sort: Desc)])

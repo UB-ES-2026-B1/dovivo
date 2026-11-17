@@ -101,6 +101,24 @@ describe("listPropertyCards", () => {
     expect(args.where.areaM2).toEqual({ gte: 60, lte: undefined });
   });
 
+  it("treats a minimum area of 0 as no minimum, so listings without m² still show", async () => {
+    await list({ minAreaM2: 0 });
+
+    const [args] = fakeDb.property.findMany.mock.calls[0] as [
+      { where: Record<string, unknown> },
+    ];
+    expect(args.where.areaM2).toBeUndefined();
+  });
+
+  it("keeps the maximum area when the minimum is 0", async () => {
+    await list({ minAreaM2: 0, maxAreaM2: 100 });
+
+    const [args] = fakeDb.property.findMany.mock.calls[0] as [
+      { where: Record<string, unknown> },
+    ];
+    expect(args.where.areaM2).toEqual({ gte: undefined, lte: 100 });
+  });
+
   it("does not filter by area when none is given, so listings without m² still show", async () => {
     await list();
 
@@ -144,11 +162,11 @@ describe("listPropertyCards", () => {
     );
   });
 
-  it("counts the whole search with the same filters, whatever the page (US-10)", async () => {
+  it("counts the whole search with the same filters on the first page (US-10)", async () => {
     fakeDb.property.findMany.mockResolvedValue(["p2", "p1"].map(makeRow));
     fakeDb.property.count.mockResolvedValue(42);
 
-    const page = await list({ listingType: "RENT", limit: 1, cursor: "p2" });
+    const page = await list({ listingType: "RENT", limit: 1 });
 
     const [findArgs] = fakeDb.property.findMany.mock.calls[0] as [
       { where: unknown },
@@ -158,6 +176,16 @@ describe("listPropertyCards", () => {
       where: findArgs.where,
     });
     expect(page.total).toBe(42);
+  });
+
+  it("does not count again on the following pages", async () => {
+    fakeDb.property.findMany.mockResolvedValue(["p2", "p1"].map(makeRow));
+
+    const page = await list({ listingType: "RENT", limit: 1, cursor: "p2" });
+
+    expect(fakeDb.property.count).not.toHaveBeenCalled();
+    expect(page.total).toBeUndefined();
+    expect(page.items).toHaveLength(1);
   });
 
   it("returns a zero total when nothing matches", async () => {

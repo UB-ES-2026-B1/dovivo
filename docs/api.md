@@ -40,10 +40,12 @@ from the PO backlog's REST codes, and the auth flows. Background: [ADR 0001](./a
 - **Search filters (US-10)**: every filter of `property.list` is optional and they combine with AND:
   `listingType`, `propertyType`, `minPriceCents` / `maxPriceCents`, `minBedrooms`, `minBathrooms`,
   `minAreaM2` / `maxAreaM2` (bounds included), `hasParking` (only `true` filters: `false` or missing
-  means "don't care"), `city` and `neighborhood`. Listings without m² (or bathrooms) are left out
-  only when an area (or bathrooms) filter is sent. A minimum above the maximum is not an error, it
-  just returns nothing. `total` is the number of listings matching the filters across all pages (the
-  same on every page), for the results counter: read it from the first page.
+  means "don't care"), `city` and `neighborhood`. A minimum of `0` means "no minimum". Listings
+  without m² (or bathrooms) are left out only when an area (or bathrooms) filter is sent. A minimum
+  above the maximum is not an error, it just returns nothing. `city` / `neighborhood` must contain a
+  letter or number (`"."` is a 400). `total` is the number of listings matching the filters across
+  all pages, for the results counter: it comes only on the first page (no `cursor`) and is
+  `undefined` on the following ones, so keep the first page's value.
 - **Listing detail (US-12)**: `property.byId({ id })` is public. It returns the listing's public
   fields (`id`, `title`, `description`, `listingType`, `propertyType`, `status`, `priceCents`,
   `currency`, `bedrooms`, `bathrooms`, `areaM2`, `floor`, `address`, `neighborhood`, `city`,
