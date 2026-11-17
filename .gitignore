@@ -52,3 +52,7 @@ yarn-error.log*
 
 # claude code personal settings
 .claude/settings.local.json
+
+# test results QA
+test-results/
+playwright-report/
