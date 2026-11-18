@@ -1,6 +1,8 @@
 # dovivo local stack.
 #   Only the database (recommended for day-to-day dev, app runs with `pnpm dev`):
 #     docker compose up -d db
+#   Photo storage (US-18), an S3-compatible server; then `pnpm storage:setup` once:
+#     docker compose up -d storage
 #   Full stack (db + migrations + production build of the app on http://localhost:3000):
 #     docker compose up --build
 name: dovivo
@@ -22,6 +24,22 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+
+  # Local S3-compatible storage for listing photos (US-18). RustFS instead of MinIO, which no
+  # longer publishes Docker images. S3 API on :9000, web console on :9001.
+  storage:
+    image: rustfs/rustfs:1.0.5
+    restart: unless-stopped
+    environment:
+      RUSTFS_ACCESS_KEY: rustfsadmin
+      RUSTFS_SECRET_KEY: rustfsadmin
+      RUSTFS_CONSOLE_ENABLE: "true"
+    ports:
+      - "${STORAGE_PORT:-9000}:9000"
+      - "${STORAGE_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      # Named volume: a bind mount would need to be writable by the image's user (UID 10001).
+      - storage-data:/data
 
   migrate:
     build:
@@ -55,3 +73,4 @@ services:
 
 volumes:
   db-data:
+  storage-data:

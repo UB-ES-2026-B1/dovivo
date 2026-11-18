@@ -1,5 +1,7 @@
 import { type Prisma } from "@prisma/client";
 
+import { withPhotoUrls } from "~/server/services/property-card";
+
 /**
  * Listing detail resource (US-12): what the public detail page shows. Every field is listed
  * explicitly, so internal columns (`ownerId`, `deletedAt`, `createdAt`, image upload metadata)
@@ -85,5 +87,8 @@ export function toPropertyDetail({
   deletedAt: _deletedAt,
   ...detail
 }: PropertyDetailRow): PropertyDetail {
-  return detail;
+  return {
+    ...detail,
+    images: detail.images.map((image) => withPhotoUrls(image)),
+  };
 }
