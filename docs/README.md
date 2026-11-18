@@ -15,6 +15,7 @@ procedures per sprint and the API contract (§7, T-06), search spike (§8, T-07)
 | [ADR 0001: Architecture](./adr/0001-architecture.md) | Why a T3 modular monolith, request flow, where code lives, PO/Laravel → T3 glossary | T-04 |
 | [ADR 0002: Authentication](./adr/0002-auth.md) | Credentials + JWT details, hashing, user enumeration, blocked users, sign-out gap, rate limiting | T-06 |
 | [ADR 0003: Chat and chatbot](./adr/0003-chat-and-chatbot.md) | Polling instead of realtime for US-21/US-22; chatbot pointer to contract §9 | T-09 |
+| [ADR 0004: Photo storage](./adr/0004-photo-storage.md) | S3-compatible bucket, signed upload URL + confirm, sharp re-encoding and thumbnails (US-18) | T-10 |
 
 ## Architecture Decision Records
 

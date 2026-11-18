@@ -61,6 +61,8 @@ from the PO backlog's REST codes, and the auth flows. Background: [ADR 0001](./a
   on every write (`propertySearchColumns`) and which are never returned.
 - **Listing photos (detail)**: `property.byId` returns the gallery ordered by `position`; each
   image exposes `id`, `url`, `thumbnailUrl`, `alt`, `position`, `isCover`, `width`, `height`.
+  `url` and `thumbnailUrl` are full public URLs (use `thumbnailUrl` on cards, `url` on the detail
+  page); the database stores the storage key ([ADR 0004](./adr/0004-photo-storage.md)).
 - **Soft-deleted listings**: excluded from `list` and `mine`; `byId` and `publish`
   answer `NOT_FOUND`, also for the owner.
 
@@ -146,7 +148,7 @@ with `const utils = api.useUtils()` and `utils.user.me.setData(undefined, update
 **Publish a listing (US-17)**: two calls. `api.property.create.useMutation()` with the form values
 (validated by `createPropertySchema`) creates a `DRAFT` that only the owner sees and returns it with
 its `id`; then `api.property.publish.useMutation()` with `{ id }` makes it visible in the list and
-the search. Photos (US-18) will be added between the two calls. Required: `title` (5-120),
+the search. Photos (US-18) are added between the two calls (see below). Required: `title` (5-120),
 `description` (20-5000), `listingType`, `propertyType`, `priceCents` (> 0 and at most
 `DB_INT_MAX` = 2,147,483,647, i.e. ~21.47 M€), `address` (3-200), `city` and `province` (2-100).
 Optional: `bedrooms` and `bathrooms` (≥ 0), `areaM2` (> 0), `floor` (max 20), `neighborhood`
@@ -157,6 +159,37 @@ as `null`. An invalid field gives `BAD_REQUEST` with per-field errors and nothin
 owner is always the signed-in user. Type the form with `CreatePropertyInput` (the input shape,
 before the transforms) and validate it with `createPropertySchema` to get the same errors as the
 server.
+
+**Listing photos (US-18)**: the browser uploads each file straight to the storage with a signed
+URL ([ADR 0004](./adr/0004-photo-storage.md)). Limits live in `src/lib/validators/photo.ts`
+(`MAX_PHOTOS_PER_PROPERTY` = 15, `MAX_PHOTO_BYTES` = 5 MB, JPG/PNG): check them before uploading
+to show the error at once. Only the owner of a listing that isn't deleted can use these
+(`NOT_FOUND` / `FORBIDDEN` otherwise).
+
+1. `api.property.photos.createUpload.useMutation()` with `{ propertyId, mimeType: file.type,
+   sizeBytes: file.size }` returns `{ key, uploadUrl, headers, expiresAt }`. A wrong type or size
+   gives `BAD_REQUEST` with field errors; a 16th photo gives `BAD_REQUEST` with the message
+   "A listing can have at most 15 photos.".
+2. Upload the file: `fetch(uploadUrl, { method: "PUT", headers, body: file })`. This is the
+   storage, not our API (the one `fetch` rule 2 allows). The URL expires in 5 minutes and only
+   accepts that exact type and size.
+3. `api.property.photos.confirm.useMutation()` with `{ propertyId, key, alt? }` returns the
+   photo (same fields as in `byId`). The first photo becomes the cover. If the file isn't really a
+   JPG/PNG, is over 5 MB or is damaged, it gives `BAD_REQUEST` with a message to show, and the
+   file is discarded. `CONFLICT` means another photo was added at the same moment: retry
+   `confirm`. Calling `confirm` twice with the same key is harmless.
+
+Upload several files one after another, or in parallel and retry on `CONFLICT`.
+
+- `api.property.photos.update.useMutation()` with `{ propertyId, order?, coverImageId? }`:
+  `order` lists **every** photo id of the listing once, in the new order; `coverImageId` marks
+  the cover (the previous one is unmarked). Returns the whole gallery in the new order.
+- `api.property.photos.delete.useMutation()` with `{ imageId }` deletes the photo and its files,
+  closes the gap in the positions and, if it was the cover, makes the first photo the cover.
+  Returns the remaining gallery.
+
+After any of these, invalidate `property.byId` for the listing (or set its `images` with the
+returned gallery).
 
 ## Open points
 

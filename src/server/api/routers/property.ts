@@ -5,6 +5,7 @@ import {
   propertyFiltersSchema,
   propertyIdSchema,
 } from "~/lib/validators/property";
+import { photoRouter } from "~/server/api/routers/photo";
 import {
   createTRPCRouter,
   protectedProcedure,
@@ -19,6 +20,9 @@ import { listPropertyCards } from "~/server/services/property-list";
 import { propertySearchColumns } from "~/lib/search-text";
 
 export const propertyRouter = createTRPCRouter({
+  /** Listing photos (US-18): `property.photos.createUpload`, `confirm`, `update`, `delete`. */
+  photos: photoRouter,
+
   /**
    * Public search used by the /buy and /rent pages (US-09): published listings as cards (see
    * `propertyCardSelect`), newest first, cursor-based pagination.

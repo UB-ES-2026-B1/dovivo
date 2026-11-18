@@ -17,6 +17,18 @@ export const env = createEnv({
     DATABASE_URL: z.string().url(),
     // Number of reverse proxies in front of the app; used to read the client IP for rate limiting.
     TRUSTED_PROXY_COUNT: z.coerce.number().int().min(0).default(0),
+    // Photo storage (US-18): any S3-compatible service (MinIO locally, S3, R2...). Optional so the
+    // app boots without it; only the photo procedures need it.
+    S3_ENDPOINT: z.string().url().optional(),
+    S3_REGION: z.string().default("us-east-1"),
+    S3_BUCKET: z.string().optional(),
+    S3_ACCESS_KEY_ID: z.string().optional(),
+    S3_SECRET_ACCESS_KEY: z.string().optional(),
+    S3_FORCE_PATH_STYLE: z
+      .enum(["true", "false"])
+      .default("false")
+      .transform((value) => value === "true"),
+    S3_PUBLIC_URL: z.string().url().optional(),
     NODE_ENV: z
       .enum(["development", "test", "production"])
       .default("development"),
@@ -41,6 +53,13 @@ export const env = createEnv({
     AUTH_DISCORD_SECRET: process.env.AUTH_DISCORD_SECRET,
     DATABASE_URL: process.env.DATABASE_URL,
     TRUSTED_PROXY_COUNT: process.env.TRUSTED_PROXY_COUNT,
+    S3_ENDPOINT: process.env.S3_ENDPOINT,
+    S3_REGION: process.env.S3_REGION,
+    S3_BUCKET: process.env.S3_BUCKET,
+    S3_ACCESS_KEY_ID: process.env.S3_ACCESS_KEY_ID,
+    S3_SECRET_ACCESS_KEY: process.env.S3_SECRET_ACCESS_KEY,
+    S3_FORCE_PATH_STYLE: process.env.S3_FORCE_PATH_STYLE,
+    S3_PUBLIC_URL: process.env.S3_PUBLIC_URL,
     NODE_ENV: process.env.NODE_ENV,
   },
   /**

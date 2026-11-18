@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { type PropertyCardRow, toPropertyCard } from "./property-card";
+import {
+  type PropertyCardRow,
+  toPropertyCard,
+  withPhotoUrls,
+} from "./property-card";
 
 const row: PropertyCardRow = {
   id: "prop_1",
@@ -46,5 +50,34 @@ describe("toPropertyCard", () => {
 
     expect(card.cover).toBeNull();
     expect(card).not.toHaveProperty("images");
+  });
+});
+
+describe("withPhotoUrls", () => {
+  const base = "https://photos.dovivo.test";
+
+  it("turns stored keys into public URLs (US-18)", () => {
+    expect(
+      withPhotoUrls(
+        {
+          url: "properties/p/a.jpg",
+          thumbnailUrl: "properties/p/a-thumb.webp",
+          alt: null,
+        },
+        base,
+      ),
+    ).toEqual({
+      url: "https://photos.dovivo.test/properties/p/a.jpg",
+      thumbnailUrl: "https://photos.dovivo.test/properties/p/a-thumb.webp",
+      alt: null,
+    });
+  });
+
+  it("keeps full URLs and a missing thumbnail", () => {
+    const seed = {
+      url: "https://picsum.photos/seed/x/1200/800",
+      thumbnailUrl: null,
+    };
+    expect(withPhotoUrls(seed, base)).toEqual(seed);
   });
 });
