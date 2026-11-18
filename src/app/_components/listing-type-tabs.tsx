@@ -11,10 +11,17 @@ const TABS: { href: string; label: string; listingType: ListingType }[] = [
 ];
 
 /**
- * Sale/rent selector (US-09). Plain links, so it works without JavaScript and every option has
- * its own shareable URL.
+ * Sale/rent selector (US-09), the operation filter of the search (US-10). Plain links, so it
+ * works without JavaScript and every option has its own shareable URL. They keep the other
+ * filters (`query`), so switching between sale and rent doesn't lose the search.
  */
-export function ListingTypeTabs({ active }: { active: ListingType }) {
+export function ListingTypeTabs({
+  active,
+  query = "",
+}: {
+  active: ListingType;
+  query?: string;
+}) {
   return (
     <nav aria-label="Operation" className="mb-8">
       <ul className="inline-flex rounded-full border border-slate-200 bg-white p-1 text-sm font-medium">
@@ -23,7 +30,7 @@ export function ListingTypeTabs({ active }: { active: ListingType }) {
           return (
             <li key={tab.href}>
               <Link
-                href={tab.href}
+                href={query ? `${tab.href}?${query}` : tab.href}
                 aria-current={isActive ? "page" : undefined}
                 className={
                   isActive
