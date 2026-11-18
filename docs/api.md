@@ -78,7 +78,7 @@ responses may still be `200` overall, so **always read `error.data?.code`**, nev
 | 401 | `UNAUTHORIZED` | No session, or the user was blocked/deleted (the session is dropped on the next request) | Redirect to `/login?callbackUrl=<current path>` |
 | 403 | `FORBIDDEN` | Signed in but not the owner; messaging your own listing; not an admin | Show "not allowed", hide the action |
 | 404 | `NOT_FOUND` | Missing, soft-deleted (`deletedAt`), or a draft you don't own | `notFound()` in server components / "not found" UI |
-| 409 | `CONFLICT` | Sign-up with an email that already exists (case-insensitive) | "This email is already registered" on the email field |
+| 409 | `CONFLICT` | Sign-up with an email that already exists (case-insensitive); publishing a listing that isn't a draft; `property.photos.confirm` that couldn't save the photo (not expected, retry with the same key) | Sign-up: "This email is already registered" on the email field; otherwise show the message |
 | 429 | `TOO_MANY_REQUESTS` | Sign-up: more than 5 per 15 min from the same IP (only when the IP is known, see `TRUSTED_PROXY_COUNT`) | "Too many attempts, try again later" |
 | 500 | `INTERNAL_SERVER_ERROR` | Bug / DB down | Generic error message |
 
@@ -176,10 +176,13 @@ to show the error at once. Only the owner of a listing that isn't deleted can us
 3. `api.property.photos.confirm.useMutation()` with `{ propertyId, key, alt? }` returns the
    photo (same fields as in `byId`). The first photo becomes the cover. If the file isn't really a
    JPG/PNG, is over 5 MB or is damaged, it gives `BAD_REQUEST` with a message to show, and the
-   file is discarded. `CONFLICT` means another photo was added at the same moment: retry
-   `confirm`. Calling `confirm` twice with the same key is harmless.
+   file is discarded: start again from step 1. Calling `confirm` twice with the same key returns
+   the same photo, so it is safe to retry after a network error.
 
-Upload several files one after another, or in parallel and retry on `CONFLICT`.
+Several files can be uploaded and confirmed in parallel (e.g. with `Promise.all`): the server
+confirms the photos of a listing one after another, so they get consecutive positions and only
+the first one becomes the cover. `confirm` doesn't answer `CONFLICT` in normal use; if it ever
+does, the upload is kept and calling `confirm` again with the same key works.
 
 - `api.property.photos.update.useMutation()` with `{ propertyId, order?, coverImageId? }`:
   `order` lists **every** photo id of the listing once, in the new order; `coverImageId` marks

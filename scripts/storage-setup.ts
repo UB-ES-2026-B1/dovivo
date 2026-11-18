@@ -26,6 +26,12 @@ function required(name: string): string {
   return value;
 }
 
+/** An empty value in `.env` ("leave it empty for AWS S3") means "not set", as in `src/env.js`. */
+function optional(name: string): string | undefined {
+  const value = process.env[name]?.trim();
+  return value === "" ? undefined : value;
+}
+
 const bucket = required("S3_BUCKET");
 // Origins allowed to upload from the browser. Comma-separated, e.g. the staging URL.
 const origins = (process.env.S3_CORS_ORIGINS ?? "http://localhost:3000")
@@ -34,8 +40,8 @@ const origins = (process.env.S3_CORS_ORIGINS ?? "http://localhost:3000")
   .filter(Boolean);
 
 const client = new S3Client({
-  endpoint: process.env.S3_ENDPOINT,
-  region: process.env.S3_REGION ?? "us-east-1",
+  endpoint: optional("S3_ENDPOINT"),
+  region: optional("S3_REGION") ?? "us-east-1",
   forcePathStyle: process.env.S3_FORCE_PATH_STYLE === "true",
   credentials: {
     accessKeyId: required("S3_ACCESS_KEY_ID"),

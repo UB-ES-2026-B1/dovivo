@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  displayKeyFor,
   isPhotoKeyOf,
   isStorageKey,
   newPhotoKey,
@@ -44,6 +45,20 @@ describe("isPhotoKeyOf", () => {
     ["any other object", "secrets/backup.sql"],
   ])("refuses %s", (_case, key) => {
     expect(isPhotoKeyOf("prop_1", key)).toBe(false);
+  });
+});
+
+describe("displayKeyFor", () => {
+  it("adds -display and keeps the format, so it never equals the upload's key", () => {
+    expect(displayKeyFor(`properties/prop_1/${UUID}.jpg`)).toBe(
+      `properties/prop_1/${UUID}-display.jpg`,
+    );
+    expect(displayKeyFor(`properties/prop_1/${UUID}.png`)).toBe(
+      `properties/prop_1/${UUID}-display.png`,
+    );
+    expect(
+      isPhotoKeyOf("prop_1", displayKeyFor(`properties/prop_1/${UUID}.jpg`)),
+    ).toBe(false);
   });
 });
 

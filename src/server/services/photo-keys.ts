@@ -8,8 +8,11 @@ import { type PhotoMimeType } from "~/lib/validators/photo";
  * without touching the database. Seed photos are full `https://` URLs and are returned as they are.
  *
  * Keys always use `/` (they are object names, not file paths):
- *   properties/<propertyId>/<uuid>.jpg        original, re-encoded on confirm
- *   properties/<propertyId>/<uuid>-thumb.webp thumbnail for the cards
+ *   properties/<propertyId>/<uuid>.jpg          upload as sent by the browser, deleted on confirm
+ *   properties/<propertyId>/<uuid>-display.jpg  re-encoded photo for the detail page (`url`)
+ *   properties/<propertyId>/<uuid>-thumb.webp   thumbnail for the cards (`thumbnailUrl`)
+ * The published files never share a key with the upload, so the signed upload URL (valid for a
+ * few minutes) can't overwrite what is shown.
  */
 
 const EXTENSIONS: Record<PhotoMimeType, string> = {
@@ -38,7 +41,12 @@ export function isPhotoKeyOf(propertyId: string, key: string): boolean {
   return new RegExp(`^${UUID}\\.(jpg|png)$`).test(key.slice(prefix.length));
 }
 
-/** Key of the thumbnail generated for an original. */
+/** Key of the re-encoded photo shown on the detail page, same format as the upload. */
+export function displayKeyFor(key: string): string {
+  return key.replace(/\.(jpg|png)$/, "-display.$1");
+}
+
+/** Key of the thumbnail generated for an upload. */
 export function thumbnailKeyFor(key: string): string {
   return key.replace(/\.(jpg|png)$/, "-thumb.webp");
 }

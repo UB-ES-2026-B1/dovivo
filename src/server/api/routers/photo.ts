@@ -12,6 +12,7 @@ import {
 import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
 import { type AppPrismaClient } from "~/server/db-omit";
 import {
+  displayKeyFor,
   isPhotoKeyOf,
   isStorageKey,
   newPhotoKey,
@@ -35,13 +36,15 @@ import {
  * Listing photos (US-18): `property.photos.*`. Upload is two calls, as in contract §7:
  * 1. `createUpload` checks the owner, the type, the size and the 15-photo limit and returns a
  *    signed URL; the browser `PUT`s the file straight to the storage.
- * 2. `confirm` checks the uploaded file, re-encodes it, makes the thumbnail and creates the
- *    `PropertyImage`.
+ * 2. `confirm` checks the uploaded file, saves a re-encoded copy and a thumbnail under their own
+ *    keys, creates the `PropertyImage` and deletes the upload.
  * `update` reorders the gallery or changes the cover, and `delete` removes a photo and its files.
  * Only the owner of a listing that isn't deleted can do any of this.
  *
  * Invariants kept here (contract §3): positions are 0..n-1 without gaps, and a listing with photos
- * has exactly one cover (the partial unique index only guarantees "at most one").
+ * has exactly one cover (the partial unique index only guarantees "at most one"). The transactions
+ * that read and write positions or the cover lock the listing's row first (`lockProperty`), so
+ * changes to the photos of one listing run one after another and never collide.
  */
 
 // Narrow views of the client, so the helpers accept both `ctx.db` and a transaction.
@@ -51,6 +54,7 @@ type GalleryDb = { propertyImage: Pick<ImageDelegate, "findMany"> };
 type PositionsDb = {
   propertyImage: Pick<ImageDelegate, "updateMany" | "update">;
 };
+type LockDb = Pick<Prisma.TransactionClient, "$queryRaw">;
 
 function requireStorage(): PhotoStorage {
   const storage = getPhotoStorage();
@@ -79,6 +83,15 @@ async function assertOwnsProperty(
   if (property.ownerId !== userId) {
     throw new TRPCError({ code: "FORBIDDEN" });
   }
+}
+
+/**
+ * Locks the listing's row until the transaction ends. Two uploads confirmed at once (e.g. several
+ * files chosen together) would otherwise read the same count and both take the same position, or
+ * both become the cover; two deletes would each renumber a photo the other just removed.
+ */
+async function lockProperty(tx: LockDb, propertyId: string) {
+  await tx.$queryRaw`SELECT 1 FROM "Property" WHERE "id" = ${propertyId} FOR UPDATE`;
 }
 
 function tooManyPhotos() {
@@ -166,7 +179,10 @@ export const photoRouter = createTRPCRouter({
       };
     }),
 
-  /** Step 2: registers the uploaded file. Calling it twice with the same key is harmless. */
+  /**
+   * Step 2: registers the uploaded file. Uploads can be confirmed in parallel (they are serialised
+   * per listing), and calling it twice with the same key returns the same photo.
+   */
   confirm: protectedProcedure
     .input(confirmPhotoSchema)
     .mutation(async ({ ctx, input }) => {
@@ -180,12 +196,16 @@ export const photoRouter = createTRPCRouter({
           message: "Unknown upload. Ask for a new upload URL.",
         });
       }
+      const displayKey = displayKeyFor(key);
+      const thumbnailKey = thumbnailKeyFor(key);
+      const findRegistered = () =>
+        ctx.db.propertyImage.findFirst({
+          where: { propertyId, url: displayKey },
+          select: publicImageSelect,
+        });
 
       // Already confirmed (e.g. the first answer was lost): return the photo again.
-      const existing = await ctx.db.propertyImage.findFirst({
-        where: { propertyId, url: key },
-        select: publicImageSelect,
-      });
+      const existing = await findRegistered();
       if (existing) return withPhotoUrls(existing);
 
       const sizeBytes = await storage.sizeOf(key);
@@ -195,29 +215,48 @@ export const photoRouter = createTRPCRouter({
           message: "The photo hasn't been uploaded yet.",
         });
       }
-      const thumbnailKey = thumbnailKeyFor(key);
-      const refuse = async (message: string): Promise<never> => {
-        await removeFiles(storage, [key, thumbnailKey]);
-        throw new TRPCError({ code: "BAD_REQUEST", message });
+      /** A file that can never be accepted: discard everything of this upload. */
+      const refuse = async (error: TRPCError): Promise<never> => {
+        await removeFiles(storage, [key, displayKey, thumbnailKey]);
+        throw error;
       };
       if (sizeBytes > MAX_PHOTO_BYTES) {
-        return refuse("Each photo can be at most 5 MB.");
+        return refuse(
+          new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Each photo can be at most 5 MB.",
+          }),
+        );
       }
 
       let processed;
       try {
         processed = await processPhoto(await storage.download(key));
       } catch (error) {
-        if (error instanceof InvalidPhotoError) return refuse(error.message);
+        if (error instanceof InvalidPhotoError) {
+          return refuse(
+            new TRPCError({ code: "BAD_REQUEST", message: error.message }),
+          );
+        }
         throw error;
       }
 
-      // The original is replaced by its re-encoded version (no metadata, at most 1920 px).
-      await storage.upload(key, processed.display, processed.mimeType);
+      // Published under their own keys: the signed upload URL can only ever write `key`.
+      await storage.upload(displayKey, processed.display, processed.mimeType);
       await storage.upload(thumbnailKey, processed.thumbnail, "image/webp");
 
+      let image;
       try {
-        const image = await ctx.db.$transaction(async (tx) => {
+        image = await ctx.db.$transaction(async (tx) => {
+          await lockProperty(tx, propertyId);
+
+          // Inside the lock: confirmed by a parallel call with the same key while we processed.
+          const registered = await tx.propertyImage.findFirst({
+            where: { propertyId, url: displayKey },
+            select: publicImageSelect,
+          });
+          if (registered) return registered;
+
           const count = await tx.propertyImage.count({ where: { propertyId } });
           if (count >= MAX_PHOTOS_PER_PROPERTY) throw tooManyPhotos();
           const hasCover =
@@ -229,15 +268,14 @@ export const photoRouter = createTRPCRouter({
           return tx.propertyImage.create({
             data: {
               propertyId,
-              url: key,
+              url: displayKey,
               thumbnailUrl: thumbnailKey,
               alt: input.alt ?? null,
               mimeType: processed.mimeType,
               sizeBytes,
               width: processed.width,
               height: processed.height,
-              // Positions have no gaps, so the next one is the count. Two confirms at the same
-              // time get the same position and the unique index refuses one of them.
+              // Positions have no gaps and the listing is locked, so the next one is the count.
               position: count,
               // The first photo becomes the cover.
               isCover: !hasCover,
@@ -245,24 +283,24 @@ export const photoRouter = createTRPCRouter({
             select: publicImageSelect,
           });
         });
-        return withPhotoUrls(image);
       } catch (error) {
-        // The same key confirmed twice at once: the other call registered it, so its files stay.
-        const registered = await ctx.db.propertyImage.findFirst({
-          where: { propertyId, url: key },
-          select: publicImageSelect,
-        });
-        if (registered) return withPhotoUrls(registered);
+        if (error instanceof TRPCError) return refuse(error);
 
-        await removeFiles(storage, [key, thumbnailKey]);
+        // Not expected with the lock, but if it happens the upload is kept so `confirm` can be
+        // called again; only the generated files go (they are made again on the next try).
+        await removeFiles(storage, [displayKey, thumbnailKey]);
         if (isUniqueViolation(error)) {
           throw new TRPCError({
             code: "CONFLICT",
-            message: "Another photo was added at the same time. Try again.",
+            message: "The photo couldn't be saved. Try again.",
           });
         }
         throw error;
       }
+
+      // The browser's file isn't needed any more (and may still carry EXIF data).
+      await removeFiles(storage, [key]);
+      return withPhotoUrls(image);
     }),
 
   /** Reorders the gallery and/or changes the cover. Returns the whole gallery. */
@@ -273,6 +311,7 @@ export const photoRouter = createTRPCRouter({
       await assertOwnsProperty(ctx.db, propertyId, ctx.session.user.id);
 
       return ctx.db.$transaction(async (tx) => {
+        await lockProperty(tx, propertyId);
         const images = await tx.propertyImage.findMany({
           where: { propertyId },
           select: { id: true },
@@ -327,7 +366,13 @@ export const photoRouter = createTRPCRouter({
       await assertOwnsProperty(ctx.db, image.propertyId, ctx.session.user.id);
 
       const remaining = await ctx.db.$transaction(async (tx) => {
-        await tx.propertyImage.delete({ where: { id: image.id } });
+        await lockProperty(tx, image.propertyId);
+
+        // Already deleted by a parallel call while we waited for the lock.
+        const { count } = await tx.propertyImage.deleteMany({
+          where: { id: image.id },
+        });
+        if (count === 0) throw new TRPCError({ code: "NOT_FOUND" });
 
         const rest = await tx.propertyImage.findMany({
           where: { propertyId: image.propertyId },

@@ -12,7 +12,7 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { env } from "~/env";
 
 /**
- * Photo storage (US-18, T-10): an S3-compatible bucket (MinIO locally, S3 or R2 in production).
+ * Photo storage (US-18, T-10): an S3-compatible bucket (RustFS locally, S3 or R2 in production).
  * The browser uploads each file straight to the bucket with a short-lived signed URL, so photos
  * never go through our server on the way in (tRPC has no multipart). The bucket must allow
  * public reads (photos are public, as the listings) and, in production, CORS `PUT` from the app.
@@ -136,9 +136,4 @@ export function getPhotoStorage(): PhotoStorage | null {
   });
   cached = createS3PhotoStorage(client, S3_BUCKET);
   return cached;
-}
-
-/** Public base URL of the bucket, used to turn stored keys into photo URLs. */
-export function photoPublicBaseUrl(): string | undefined {
-  return env.S3_PUBLIC_URL;
 }

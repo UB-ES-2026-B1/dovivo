@@ -17,7 +17,7 @@ export const env = createEnv({
     DATABASE_URL: z.string().url(),
     // Number of reverse proxies in front of the app; used to read the client IP for rate limiting.
     TRUSTED_PROXY_COUNT: z.coerce.number().int().min(0).default(0),
-    // Photo storage (US-18): any S3-compatible service (MinIO locally, S3, R2...). Optional so the
+    // Photo storage (US-18): any S3-compatible service (RustFS locally, S3, R2...). Optional so the
     // app boots without it; only the photo procedures need it.
     S3_ENDPOINT: z.string().url().optional(),
     S3_REGION: z.string().default("us-east-1"),

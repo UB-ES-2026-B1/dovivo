@@ -43,12 +43,14 @@ possible with a signed URL.
 3. `property.photos.confirm({ propertyId, key, alt? })`: owner only; the key must be one made for
    that listing. The server downloads the file and with **sharp**:
    - checks the real content is JPG/PNG (not the declared type), at most 5 MB and 40 MP;
-   - re-encodes the original (upright from EXIF, ≤ 1920 px, **no metadata**: EXIF can carry GPS
-     and camera data) and overwrites it;
-   - makes a WebP thumbnail inside 640×480 for the cards (US-18.B2).
+   - saves a re-encoded copy (upright from EXIF, ≤ 1920 px, **no metadata**: EXIF can carry GPS
+     and camera data) as `<uuid>-display.<jpg|png>`;
+   - makes a WebP thumbnail inside 640×480 for the cards (US-18.B2), `<uuid>-thumb.webp`.
 
-   Then it creates the `PropertyImage` at the next position; the first photo becomes the cover.
-   An invalid file is deleted from the storage.
+   Then it creates the `PropertyImage` at the next position (the first photo becomes the cover)
+   and deletes the upload. The published files never share a key with the upload, so the signed
+   URL, still valid for a few minutes, can't replace them with an unprocessed file. An invalid
+   file is deleted from the storage.
 
 ### Database
 
@@ -58,8 +60,10 @@ migration. Seed photos are full `https://` URLs and are returned as they are.
 
 Invariants kept by the API (contract §3/§4): positions are `0..n-1` without gaps and a listing
 with photos has exactly one cover. Reordering moves every photo to negative positions first,
-because `(propertyId, position)` is unique and not deferrable. Two concurrent confirms get the
-same position and the unique index refuses one (`CONFLICT`), which also keeps the 15 limit.
+because `(propertyId, position)` is unique and not deferrable. `confirm`, `update` and `delete`
+lock the listing's row (`SELECT ... FOR UPDATE`) in their transaction, so changes to one
+listing's photos run one after another: uploads confirmed in parallel get consecutive positions,
+only one becomes the cover, and the 15 limit holds.
 
 ## Consequences
 
@@ -73,8 +77,8 @@ same position and the unique index refuses one (`CONFLICT`), which also keeps th
 **Negative / trade-offs**
 
 - `confirm` downloads and processes each photo (a few hundred ms, ≤ 5 MB in memory).
-- Files of uploads that are never confirmed stay in the bucket. Fix later with a lifecycle rule
-  (delete `properties/` objects not referenced after a day) or a cleanup job.
+- Files of uploads that are never confirmed stay in the bucket, and nothing limits how many URLs
+  an owner can ask for: #108 (lifecycle rule / cleanup job, or a rate limit on `createUpload`).
 - Files are deleted from the storage only by `property.photos.delete`. Hard-deleting a listing
   or an account (cascade) leaves its files: whoever implements US-07 (delete account) must
   delete them (contract §5).

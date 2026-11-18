@@ -35,10 +35,29 @@ const fakeDb = {
     create: vi.fn(),
     update: vi.fn(),
     updateMany: vi.fn(),
-    delete: vi.fn(),
+    deleteMany: vi.fn(),
   },
   $transaction: vi.fn(),
+  $queryRaw: vi.fn(),
 };
+
+/** The listing's row was locked (`SELECT ... FOR UPDATE`) before `next` was first called. */
+function expectLockedBefore(
+  propertyId: string,
+  next: { mock: { invocationCallOrder: number[] } },
+) {
+  const [strings, ...values] = fakeDb.$queryRaw.mock.calls[0] as [
+    TemplateStringsArray,
+    ...unknown[],
+  ];
+  expect(strings.join("?")).toMatch(
+    /FROM "Property" WHERE "id" = \? FOR UPDATE/,
+  );
+  expect(values).toEqual([propertyId]);
+  expect(fakeDb.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(
+    next.mock.invocationCallOrder[0]!,
+  );
+}
 
 const session = (id: string): Session => ({
   user: { id, role: "USER" },
@@ -55,6 +74,7 @@ const makeCaller = (s: Session | null = session("owner_1")) =>
 
 const UUID = "0f8fad5b-d9cb-469f-a165-70867728950e";
 const KEY = `properties/prop_1/${UUID}.jpg`;
+const DISPLAY = `properties/prop_1/${UUID}-display.jpg`;
 const THUMB = `properties/prop_1/${UUID}-thumb.webp`;
 
 const ownListing = { ownerId: "owner_1", deletedAt: null };
@@ -81,6 +101,8 @@ beforeEach(() => {
     (run: (tx: typeof fakeDb) => unknown) => run(fakeDb),
   );
   fakeDb.property.findUnique.mockResolvedValue(ownListing);
+  fakeDb.$queryRaw.mockResolvedValue([]);
+  fakeDb.propertyImage.deleteMany.mockResolvedValue({ count: 1 });
   fakeDb.propertyImage.findMany.mockResolvedValue([]);
 });
 
@@ -202,7 +224,7 @@ describe("property.photos.createUpload", () => {
 describe("property.photos.confirm", () => {
   const created = {
     id: "img_1",
-    url: KEY,
+    url: DISPLAY,
     thumbnailUrl: THUMB,
     alt: null,
     position: 0,
@@ -216,7 +238,7 @@ describe("property.photos.confirm", () => {
     storage.download.mockResolvedValue(await jpg());
   }
 
-  it("creates the first photo as cover at position 0, with its thumbnail", async () => {
+  it("publishes the photo under its own keys, as cover at position 0, and deletes the upload", async () => {
     await uploaded();
     fakeDb.propertyImage.count.mockResolvedValue(0);
     fakeDb.propertyImage.create.mockResolvedValue(created);
@@ -228,21 +250,18 @@ describe("property.photos.confirm", () => {
     });
 
     expect(photo).toEqual(created);
-    expect(storage.upload).toHaveBeenCalledWith(
-      KEY,
-      expect.any(Buffer),
-      "image/jpeg",
-    );
-    expect(storage.upload).toHaveBeenCalledWith(
-      THUMB,
-      expect.any(Buffer),
-      "image/webp",
-    );
+    // Nothing is written to the upload's key: the signed URL can't replace what is published.
+    expect(
+      storage.upload.mock.calls.map(([key, , type]) => [key, type]),
+    ).toEqual([
+      [DISPLAY, "image/jpeg"],
+      [THUMB, "image/webp"],
+    ]);
     expect(fakeDb.propertyImage.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: {
           propertyId: "prop_1",
-          url: KEY,
+          url: DISPLAY,
           thumbnailUrl: THUMB,
           alt: "Sala d'estar",
           mimeType: "image/jpeg",
@@ -254,6 +273,20 @@ describe("property.photos.confirm", () => {
         },
       }),
     );
+    expect(storage.remove).toHaveBeenCalledWith([KEY]);
+    expect(storage.remove.mock.invocationCallOrder[0]).toBeGreaterThan(
+      fakeDb.propertyImage.create.mock.invocationCallOrder[0]!,
+    );
+  });
+
+  it("locks the listing before counting its photos", async () => {
+    await uploaded();
+    fakeDb.propertyImage.count.mockResolvedValue(0);
+    fakeDb.propertyImage.create.mockResolvedValue(created);
+
+    await makeCaller().confirm({ propertyId: "prop_1", key: KEY });
+
+    expectLockedBefore("prop_1", fakeDb.propertyImage.count);
   });
 
   it("adds later photos at the end, without changing the cover", async () => {
@@ -278,6 +311,7 @@ describe("property.photos.confirm", () => {
   it.each([
     ["another listing's key", `properties/prop_2/${UUID}.jpg`],
     ["an arbitrary object", "secrets/backup.sql"],
+    ["a published photo's key", DISPLAY],
   ])("refuses %s without reading the storage", async (_case, key) => {
     await expect(
       makeCaller().confirm({ propertyId: "prop_1", key }),
@@ -292,6 +326,11 @@ describe("property.photos.confirm", () => {
     await expect(
       makeCaller().confirm({ propertyId: "prop_1", key: KEY }),
     ).resolves.toEqual(created);
+    expect(fakeDb.propertyImage.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { propertyId: "prop_1", url: DISPLAY },
+      }),
+    );
     expect(storage.download).not.toHaveBeenCalled();
     expect(fakeDb.propertyImage.create).not.toHaveBeenCalled();
   });
@@ -317,7 +356,7 @@ describe("property.photos.confirm", () => {
       message: "Each photo can be at most 5 MB.",
     });
     expect(storage.download).not.toHaveBeenCalled();
-    expect(storage.remove).toHaveBeenCalledWith([KEY, THUMB]);
+    expect(storage.remove).toHaveBeenCalledWith([KEY, DISPLAY, THUMB]);
   });
 
   it("refuses and deletes a file that isn't really a JPG or PNG", async () => {
@@ -331,7 +370,7 @@ describe("property.photos.confirm", () => {
       message: "Only JPG or PNG photos are allowed",
     });
     expect(storage.upload).not.toHaveBeenCalled();
-    expect(storage.remove).toHaveBeenCalledWith([KEY, THUMB]);
+    expect(storage.remove).toHaveBeenCalledWith([KEY, DISPLAY, THUMB]);
   });
 
   it("refuses the 16th photo even if another tab got the URL first", async () => {
@@ -340,34 +379,45 @@ describe("property.photos.confirm", () => {
 
     await expect(
       makeCaller().confirm({ propertyId: "prop_1", key: KEY }),
-    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    ).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+      message: "A listing can have at most 15 photos.",
+    });
     expect(fakeDb.propertyImage.create).not.toHaveBeenCalled();
-    expect(storage.remove).toHaveBeenCalledWith([KEY, THUMB]);
+    expect(storage.remove).toHaveBeenCalledWith([KEY, DISPLAY, THUMB]);
   });
 
-  it("answers CONFLICT and cleans up when another photo took the same position", async () => {
+  it("returns the photo a parallel call with the same key registered meanwhile", async () => {
     await uploaded();
-    fakeDb.propertyImage.count.mockResolvedValue(2);
-    fakeDb.propertyImage.create.mockRejectedValue(uniqueViolation());
-
-    await expect(
-      makeCaller().confirm({ propertyId: "prop_1", key: KEY }),
-    ).rejects.toMatchObject({ code: "CONFLICT" });
-    expect(storage.remove).toHaveBeenCalledWith([KEY, THUMB]);
-  });
-
-  it("keeps the files when the same key was confirmed twice at once", async () => {
-    await uploaded();
-    fakeDb.propertyImage.count.mockResolvedValue(2);
-    fakeDb.propertyImage.create.mockRejectedValue(uniqueViolation());
     fakeDb.propertyImage.findFirst
       .mockResolvedValueOnce(null) // before processing
-      .mockResolvedValueOnce(created); // registered by the other call
+      .mockResolvedValueOnce(created); // inside the lock
 
     await expect(
       makeCaller().confirm({ propertyId: "prop_1", key: KEY }),
     ).resolves.toEqual(created);
-    expect(storage.remove).not.toHaveBeenCalled();
+    expect(fakeDb.propertyImage.create).not.toHaveBeenCalled();
+    // The published files belong to the registered photo: only the upload goes.
+    expect(storage.remove).toHaveBeenCalledWith([KEY]);
+  });
+
+  it("keeps the upload on an unexpected unique violation, so confirm can be called again", async () => {
+    await uploaded();
+    fakeDb.propertyImage.count.mockResolvedValue(2);
+    fakeDb.propertyImage.create.mockRejectedValueOnce(uniqueViolation());
+
+    await expect(
+      makeCaller().confirm({ propertyId: "prop_1", key: KEY }),
+    ).rejects.toMatchObject({ code: "CONFLICT" });
+    expect(storage.remove).toHaveBeenCalledWith([DISPLAY, THUMB]);
+
+    // The retry the docs promise works: the upload is still there.
+    storage.remove.mockClear();
+    fakeDb.propertyImage.create.mockResolvedValue({ ...created, position: 2 });
+    await expect(
+      makeCaller().confirm({ propertyId: "prop_1", key: KEY }),
+    ).resolves.toMatchObject({ position: 2 });
+    expect(storage.remove).toHaveBeenCalledWith([KEY]);
   });
 });
 
@@ -419,6 +469,12 @@ describe("property.photos.update", () => {
     expect(fakeDb.property.findUnique).not.toHaveBeenCalled();
   });
 
+  it("locks the listing before reading its photos", async () => {
+    await makeCaller().update({ propertyId: "prop_1", coverImageId: "b" });
+
+    expectLockedBefore("prop_1", fakeDb.propertyImage.findMany);
+  });
+
   it("unmarks the old cover before marking the new one", async () => {
     await makeCaller().update({ propertyId: "prop_1", coverImageId: "b" });
 
@@ -452,7 +508,7 @@ describe("property.photos.update", () => {
 describe("property.photos.delete", () => {
   const image = {
     id: "b",
-    url: KEY,
+    url: DISPLAY,
     thumbnailUrl: THUMB,
     isCover: true,
     propertyId: "prop_1",
@@ -469,7 +525,8 @@ describe("property.photos.delete", () => {
 
     await makeCaller().delete({ imageId: "b" });
 
-    expect(fakeDb.propertyImage.delete).toHaveBeenCalledWith({
+    expectLockedBefore("prop_1", fakeDb.propertyImage.deleteMany);
+    expect(fakeDb.propertyImage.deleteMany).toHaveBeenCalledWith({
       where: { id: "b" },
     });
     expect(
@@ -479,9 +536,9 @@ describe("property.photos.delete", () => {
       { where: { id: "c" }, data: { position: 1 } },
       { where: { id: "a" }, data: { isCover: true } },
     ]);
-    expect(storage.remove).toHaveBeenCalledWith([KEY, THUMB]);
+    expect(storage.remove).toHaveBeenCalledWith([DISPLAY, THUMB]);
     expect(storage.remove.mock.invocationCallOrder[0]).toBeGreaterThan(
-      fakeDb.propertyImage.delete.mock.invocationCallOrder[0]!,
+      fakeDb.propertyImage.deleteMany.mock.invocationCallOrder[0]!,
     );
   });
 
@@ -522,6 +579,17 @@ describe("property.photos.delete", () => {
     await expect(makeCaller().delete({ imageId: "b" })).resolves.toEqual([]);
   });
 
+  it("answers NOT_FOUND, without touching files, if a parallel call deleted it meanwhile", async () => {
+    fakeDb.propertyImage.findUnique.mockResolvedValue(image);
+    fakeDb.propertyImage.deleteMany.mockResolvedValue({ count: 0 });
+
+    await expect(makeCaller().delete({ imageId: "b" })).rejects.toMatchObject({
+      code: "NOT_FOUND",
+    });
+    expect(fakeDb.propertyImage.update).not.toHaveBeenCalled();
+    expect(storage.remove).not.toHaveBeenCalled();
+  });
+
   it("answers NOT_FOUND for a missing photo and FORBIDDEN for someone else's", async () => {
     fakeDb.propertyImage.findUnique.mockResolvedValueOnce(null);
     await expect(makeCaller().delete({ imageId: "x" })).rejects.toMatchObject({
@@ -532,7 +600,7 @@ describe("property.photos.delete", () => {
     await expect(
       makeCaller(session("user_2")).delete({ imageId: "b" }),
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
-    expect(fakeDb.propertyImage.delete).not.toHaveBeenCalled();
+    expect(fakeDb.propertyImage.deleteMany).not.toHaveBeenCalled();
     expect(storage.remove).not.toHaveBeenCalled();
   });
 });
