@@ -27,7 +27,14 @@ describe("savedSearchFiltersSchema", () => {
 });
 
 describe("propertyFiltersSchema", () => {
-  it.each(["minPriceCents", "maxPriceCents", "minBedrooms"])(
+  it.each([
+    "minPriceCents",
+    "maxPriceCents",
+    "minBedrooms",
+    "minBathrooms",
+    "minAreaM2",
+    "maxAreaM2",
+  ])(
     "rejects a %s that doesn't fit an Int and accepts the largest one",
     (field) => {
       expect(
@@ -38,6 +45,45 @@ describe("propertyFiltersSchema", () => {
       ).toBe(true);
     },
   );
+
+  it.each(["minAreaM2", "maxAreaM2"])(
+    "rejects a negative or decimal %s",
+    (field) => {
+      expect(propertyFiltersSchema.safeParse({ [field]: -1 }).success).toBe(
+        false,
+      );
+      expect(propertyFiltersSchema.safeParse({ [field]: 80.5 }).success).toBe(
+        false,
+      );
+    },
+  );
+
+  it.each([
+    ["city", "."],
+    ["city", "·"],
+    ["city", " .. "],
+    ["neighborhood", "."],
+    ["neighborhood", "·"],
+  ])("rejects a %s that is empty once normalised (%j)", (field, value) => {
+    expect(propertyFiltersSchema.safeParse({ [field]: value }).success).toBe(
+      false,
+    );
+  });
+
+  it("accepts a city with accents and a middle dot", () => {
+    expect(
+      propertyFiltersSchema.safeParse({
+        city: "L'Hospitalet",
+        neighborhood: "Paral·lel",
+      }).success,
+    ).toBe(true);
+  });
+
+  it("rejects a hasParking that is not a boolean", () => {
+    expect(propertyFiltersSchema.safeParse({ hasParking: "yes" }).success).toBe(
+      false,
+    );
+  });
 
   it("applies the same limit to saved searches", () => {
     expect(
@@ -102,6 +148,8 @@ describe("createPropertySchema", () => {
     ["negative bathrooms", { bathrooms: -1 }, "bathrooms"],
     ["an unknown property type", { propertyType: "CASTLE" }, "propertyType"],
     ["a blank city", { city: "   " }, "city"],
+    ["a city of only punctuation", { city: ".." }, "city"],
+    ["a city of only middle dots", { city: "··" }, "city"],
     ["a too long address", { address: "a".repeat(201) }, "address"],
     ["a postal code with letters", { postalCode: "08A12" }, "postalCode"],
     ["a too short postal code", { postalCode: "8012" }, "postalCode"],

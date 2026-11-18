@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { normalizeSearchText } from "~/lib/search-text";
+
 /**
  * Shared zod schemas for properties. Used by the tRPC router (server-side validation) and can be
  * reused by frontend forms (e.g. with react-hook-form's zodResolver) so both sides stay in sync.
@@ -25,17 +27,34 @@ export const propertyIdSchema = z.object({
 /** Largest value of a Postgres `integer` column. Bigger numbers would fail in the database. */
 export const DB_INT_MAX = 2_147_483_647;
 
+/**
+ * Location text (city, neighbourhood) that is still something once normalised for search: `"."`
+ * or `"·"` would become `""`, so a filter would match nothing useful and a listing could never be
+ * found by it.
+ */
+const searchableText = (schema: z.ZodString) =>
+  schema.refine((value) => normalizeSearchText(value) !== "", {
+    message: "Must contain letters or numbers",
+  });
+
 /** Integer that fits an `Int` column; `.positive()` / `.nonnegative()` are added per field. */
 const dbIntSchema = z.number().int().max(DB_INT_MAX);
 
 export const propertyFiltersSchema = z.object({
   listingType: listingTypeSchema.optional(),
   propertyType: propertyTypeSchema.optional(),
-  city: z.string().trim().min(1).optional(),
+  // City and neighbourhood match ignoring case and accents ("sant marti" finds "Sant Martí").
+  city: searchableText(z.string().trim().min(1).max(100)).optional(),
+  neighborhood: searchableText(z.string().trim().min(1).max(100)).optional(),
   // Compared against `Int` columns: a bigger number would make Postgres fail with a 500.
   minPriceCents: dbIntSchema.nonnegative().optional(),
   maxPriceCents: dbIntSchema.nonnegative().optional(),
   minBedrooms: dbIntSchema.nonnegative().optional(),
+  minBathrooms: dbIntSchema.nonnegative().optional(),
+  minAreaM2: dbIntSchema.nonnegative().optional(),
+  maxAreaM2: dbIntSchema.nonnegative().optional(),
+  // Only `true` filters (with parking); `false` means "don't care", as an unticked checkbox.
+  hasParking: z.boolean().optional(),
   limit: z.number().int().min(1).max(50).default(20),
   cursor: z.string().optional(),
 });
@@ -101,7 +120,7 @@ export const createPropertySchema = z.object({
   floor: optionalTextSchema(20),
   address: z.string().trim().min(3).max(200),
   neighborhood: optionalTextSchema(100),
-  city: z.string().trim().min(2).max(100),
+  city: searchableText(z.string().trim().min(2).max(100)),
   province: z.string().trim().min(2).max(100),
   postalCode: postalCodeSchema,
   hasElevator: z.boolean().optional(),

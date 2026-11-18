@@ -28,14 +28,24 @@ from the PO backlog's REST codes, and the auth flows. Background: [ADR 0001](./a
 - **Role and name**: `session.user.role` and `session.user.name` from `auth()` are refreshed from
   the DB on every request (the `jwt` callback, ADR 0002), in tRPC and in server components, so a
   profile edit (`user.updateMe`) shows up without signing in again.
-- **Listing cards (US-09)**: `property.list` returns `{ items, nextCursor }`, where each item
+- **Listing cards (US-09)**: `property.list` returns `{ items, nextCursor, total }`, where each item
   is a card with only `id`, `title`, `listingType`, `propertyType`, `priceCents`, `currency`,
   `areaM2`, `bedrooms`, `neighborhood`, `city`, `province` and `cover` (`{ url, thumbnailUrl,
   alt, width, height }`, or `null` if the listing has no photos). The cover is the photo marked
   `isCover`, or the lowest `position` if none is marked. Only `PUBLISHED`, not deleted listings,
   newest first. Next page: pass `nextCursor` back as `cursor` (`undefined` on the last page).
-  The `minPriceCents`, `maxPriceCents` and `minBedrooms` filters must be whole numbers from 0 to
-  `DB_INT_MAX` (2,147,483,647); anything bigger gives `BAD_REQUEST`.
+  The `minPriceCents`, `maxPriceCents`, `minBedrooms`, `minBathrooms`, `minAreaM2` and
+  `maxAreaM2` filters must be whole numbers from 0 to `DB_INT_MAX` (2,147,483,647); anything
+  bigger gives `BAD_REQUEST`.
+- **Search filters (US-10)**: every filter of `property.list` is optional and they combine with AND:
+  `listingType`, `propertyType`, `minPriceCents` / `maxPriceCents`, `minBedrooms`, `minBathrooms`,
+  `minAreaM2` / `maxAreaM2` (bounds included), `hasParking` (only `true` filters: `false` or missing
+  means "don't care"), `city` and `neighborhood`. A minimum of `0` means "no minimum". Listings
+  without m² (or bathrooms) are left out only when an area (or bathrooms) filter is sent. A minimum
+  above the maximum is not an error, it just returns nothing. `city` / `neighborhood` must contain a
+  letter or number (`"."` is a 400). `total` is the number of listings matching the filters across
+  all pages, for the results counter: it comes only on the first page (no `cursor`) and is
+  `undefined` on the following ones, so keep the first page's value.
 - **Listing detail (US-12)**: `property.byId({ id })` is public. It returns the listing's public
   fields (`id`, `title`, `description`, `listingType`, `propertyType`, `status`, `priceCents`,
   `currency`, `bedrooms`, `bathrooms`, `areaM2`, `floor`, `address`, `neighborhood`, `city`,
@@ -44,6 +54,11 @@ from the PO backlog's REST codes, and the auth flows. Background: [ADR 0001](./a
   the email or phone). Internal columns (`ownerId`, `createdAt`, `deletedAt`) are not sent.
   Drafts are visible only to their owner; `RESERVED` and `CLOSED` listings stay visible so shared
   links keep working.
+- **Location filters (US-10)**: `property.list({ city, neighborhood })` match the whole name,
+  ignoring case, accents and the Catalan middle dot (`"sant marti"` finds `Sant Martí`,
+  `"parallel"` finds `Paral·lel`). Send the name as the user typed it; the API normalises it.
+  Internally both sides are compared on `citySearch` / `neighborhoodSearch`, which the API fills
+  on every write (`propertySearchColumns`) and which are never returned.
 - **Listing photos (detail)**: `property.byId` returns the gallery ordered by `position`; each
   image exposes `id`, `url`, `thumbnailUrl`, `alt`, `position`, `isCover`, `width`, `height`.
 - **Soft-deleted listings**: excluded from `list` and `mine`; `byId` and `publish`
