@@ -6,6 +6,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MAX_PHOTO_BYTES } from "~/lib/validators/photo";
 import { createCaller } from "~/server/api/root";
 import { type PhotoStorage } from "~/server/services/photo-storage";
+import {
+  PHOTO_UPLOADS_PER_USER_LIMIT,
+  photoUploadRateLimiter,
+} from "~/server/services/rate-limit";
 
 /**
  * Unit tests for `property.photos.*` (US-18). Prisma and the storage are fakes; image processing
@@ -73,7 +77,7 @@ const makeCaller = (s: Session | null = session("owner_1")) =>
   }).property.photos;
 
 const UUID = "0f8fad5b-d9cb-469f-a165-70867728950e";
-const KEY = `properties/prop_1/${UUID}.jpg`;
+const KEY = `uploads/prop_1/${UUID}.jpg`;
 const DISPLAY = `properties/prop_1/${UUID}-display.jpg`;
 const THUMB = `properties/prop_1/${UUID}-thumb.webp`;
 
@@ -94,6 +98,7 @@ const uniqueViolation = () =>
 
 beforeEach(() => {
   vi.resetAllMocks();
+  photoUploadRateLimiter.reset();
   storageConfigured = true;
   vi.spyOn(console, "log").mockImplementation(() => undefined);
   vi.spyOn(console, "error").mockImplementation(() => undefined);
@@ -177,7 +182,8 @@ describe("property.photos.createUpload", () => {
 
     const result = await makeCaller().createUpload(input);
 
-    expect(result.key).toMatch(/^properties\/prop_1\/[0-9a-f-]{36}\.png$/);
+    // Under the prefix the bucket's lifecycle rule expires if it's never confirmed (#108).
+    expect(result.key).toMatch(/^uploads\/prop_1\/[0-9a-f-]{36}\.png$/);
     expect(result).toMatchObject({
       uploadUrl: "https://storage.test/signed",
       headers: { "Content-Type": "image/png" },
@@ -217,6 +223,81 @@ describe("property.photos.createUpload", () => {
     await expect(makeCaller().createUpload(input)).rejects.toMatchObject({
       code: "INTERNAL_SERVER_ERROR",
       message: "Photo storage is not configured.",
+    });
+  });
+
+  describe("rate limit per user (#108)", () => {
+    beforeEach(() => {
+      fakeDb.propertyImage.count.mockResolvedValue(0);
+      storage.createUploadUrl.mockResolvedValue({
+        url: "https://storage.test/signed",
+        expiresAt: new Date(),
+      });
+    });
+
+    /**
+     * Counts `n` uploads for the user straight in the limiter: going through the router 45 times
+     * is too slow (the dev timing middleware waits 100-500 ms per call).
+     */
+    const useUpAllowance = (
+      userId = "owner_1",
+      n = PHOTO_UPLOADS_PER_USER_LIMIT,
+    ) => {
+      for (let i = 0; i < n; i++) photoUploadRateLimiter.check(userId);
+    };
+
+    it("counts each URL given and refuses the next one with TOO_MANY_REQUESTS", async () => {
+      useUpAllowance("owner_1", PHOTO_UPLOADS_PER_USER_LIMIT - 1);
+
+      // The last one allowed, counted by the router itself.
+      await expect(makeCaller().createUpload(input)).resolves.toMatchObject({
+        uploadUrl: "https://storage.test/signed",
+      });
+      storage.createUploadUrl.mockClear();
+
+      await expect(makeCaller().createUpload(input)).rejects.toMatchObject({
+        code: "TOO_MANY_REQUESTS",
+        message: "Too many photo uploads. Please try again later.",
+      });
+      expect(storage.createUploadUrl).not.toHaveBeenCalled();
+    });
+
+    it("counts every listing of the user together", async () => {
+      useUpAllowance();
+      fakeDb.property.findUnique.mockResolvedValue({
+        ownerId: "owner_1",
+        deletedAt: null,
+      });
+
+      await expect(
+        makeCaller().createUpload({ ...input, propertyId: "prop_2" }),
+      ).rejects.toMatchObject({ code: "TOO_MANY_REQUESTS" });
+    });
+
+    it("keeps each user's count separate", async () => {
+      useUpAllowance("owner_1");
+      fakeDb.property.findUnique.mockResolvedValue({
+        ownerId: "owner_2",
+        deletedAt: null,
+      });
+
+      await expect(
+        makeCaller(session("owner_2")).createUpload(input),
+      ).resolves.toMatchObject({ uploadUrl: "https://storage.test/signed" });
+    });
+
+    it("doesn't count requests refused before giving a URL", async () => {
+      useUpAllowance("owner_1", PHOTO_UPLOADS_PER_USER_LIMIT - 1);
+
+      fakeDb.propertyImage.count.mockResolvedValueOnce(15);
+      await expect(makeCaller().createUpload(input)).rejects.toMatchObject({
+        code: "BAD_REQUEST",
+      });
+
+      // Still one left: the refused request didn't use it.
+      await expect(makeCaller().createUpload(input)).resolves.toMatchObject({
+        uploadUrl: "https://storage.test/signed",
+      });
     });
   });
 });
@@ -309,7 +390,7 @@ describe("property.photos.confirm", () => {
   });
 
   it.each([
-    ["another listing's key", `properties/prop_2/${UUID}.jpg`],
+    ["another listing's key", `uploads/prop_2/${UUID}.jpg`],
     ["an arbitrary object", "secrets/backup.sql"],
     ["a published photo's key", DISPLAY],
   ])("refuses %s without reading the storage", async (_case, key) => {

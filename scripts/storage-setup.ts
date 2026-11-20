@@ -1,7 +1,8 @@
 /**
  * Prepares the photo bucket (US-18) with the S3_* variables of `.env`: creates it if it doesn't
  * exist, lets anyone read the photos (they are public, as the listings) and allows the browser to
- * upload with the signed URLs (CORS). Safe to run again.
+ * upload with the signed URLs (CORS). It also adds a lifecycle rule that deletes uploads never
+ * confirmed (`uploads/`, #108). Safe to run again.
  *
  *   pnpm storage:up      # local S3 (RustFS) in Docker
  *   pnpm storage:setup   # this script
@@ -11,11 +12,22 @@
  */
 import {
   CreateBucketCommand,
+  GetBucketLifecycleConfigurationCommand,
   HeadBucketCommand,
+  type LifecycleRule,
   PutBucketCorsCommand,
+  PutBucketLifecycleConfigurationCommand,
   PutBucketPolicyCommand,
   S3Client,
+  S3ServiceException,
 } from "@aws-sdk/client-s3";
+
+import {
+  PENDING_UPLOAD_EXPIRATION_DAYS,
+  PENDING_UPLOAD_PREFIX,
+} from "~/server/services/photo-keys";
+
+const PENDING_UPLOADS_RULE_ID = "dovivo-expire-pending-uploads";
 
 function required(name: string): string {
   const value = process.env[name];
@@ -107,6 +119,51 @@ async function main() {
       }),
     ),
   );
+
+  await step(
+    `Delete uploads never confirmed (${PENDING_UPLOAD_PREFIX}) after ${PENDING_UPLOAD_EXPIRATION_DAYS} day`,
+    async () => {
+      // `PutBucketLifecycleConfiguration` replaces every rule of the bucket: keep the others.
+      const others = (await currentLifecycleRules()).filter(
+        (rule) => rule.ID !== PENDING_UPLOADS_RULE_ID,
+      );
+      await client.send(
+        new PutBucketLifecycleConfigurationCommand({
+          Bucket: bucket,
+          LifecycleConfiguration: {
+            Rules: [
+              ...others,
+              {
+                ID: PENDING_UPLOADS_RULE_ID,
+                Status: "Enabled",
+                // Only the pending uploads: published photos live under `properties/`.
+                Filter: { Prefix: PENDING_UPLOAD_PREFIX },
+                Expiration: { Days: PENDING_UPLOAD_EXPIRATION_DAYS },
+              },
+            ],
+          },
+        }),
+      );
+    },
+  );
+}
+
+/** The bucket's lifecycle rules, or none if it has no lifecycle configuration yet. */
+async function currentLifecycleRules(): Promise<LifecycleRule[]> {
+  try {
+    const current = await client.send(
+      new GetBucketLifecycleConfigurationCommand({ Bucket: bucket }),
+    );
+    return current.Rules ?? [];
+  } catch (error) {
+    if (
+      error instanceof S3ServiceException &&
+      error.name === "NoSuchLifecycleConfiguration"
+    ) {
+      return [];
+    }
+    throw error;
+  }
 }
 
 main().catch((error: unknown) => {

@@ -79,7 +79,7 @@ responses may still be `200` overall, so **always read `error.data?.code`**, nev
 | 403 | `FORBIDDEN` | Signed in but not the owner; messaging your own listing; not an admin | Show "not allowed", hide the action |
 | 404 | `NOT_FOUND` | Missing, soft-deleted (`deletedAt`), or a draft you don't own | `notFound()` in server components / "not found" UI |
 | 409 | `CONFLICT` | Sign-up with an email that already exists (case-insensitive); publishing a listing that isn't a draft; `property.photos.confirm` that couldn't save the photo (not expected, retry with the same key) | Sign-up: "This email is already registered" on the email field; otherwise show the message |
-| 429 | `TOO_MANY_REQUESTS` | Sign-up: more than 5 per 15 min from the same IP (only when the IP is known, see `TRUSTED_PROXY_COUNT`) | "Too many attempts, try again later" |
+| 429 | `TOO_MANY_REQUESTS` | Sign-up: more than 5 per 15 min from the same IP (only when the IP is known, see `TRUSTED_PROXY_COUNT`); `property.photos.createUpload`: more than 45 upload URLs per hour for the same user | "Too many attempts, try again later" |
 | 500 | `INTERNAL_SERVER_ERROR` | Bug / DB down | Generic error message |
 
 Sign-in is **not** tRPC. `signIn("credentials", { …, redirect: false })` returns `res.error`
@@ -169,7 +169,9 @@ to show the error at once. Only the owner of a listing that isn't deleted can us
 1. `api.property.photos.createUpload.useMutation()` with `{ propertyId, mimeType: file.type,
    sizeBytes: file.size }` returns `{ key, uploadUrl, headers, expiresAt }`. A wrong type or size
    gives `BAD_REQUEST` with field errors; a 16th photo gives `BAD_REQUEST` with the message
-   "A listing can have at most 15 photos.".
+   "A listing can have at most 15 photos.". More than 45 upload URLs in an hour (all the user's
+   listings together) gives `TOO_MANY_REQUESTS`. An upload that is never confirmed is deleted
+   from the storage about a day later, so ask for a new URL instead of reusing an old key.
 2. Upload the file: `fetch(uploadUrl, { method: "PUT", headers, body: file })`. This is the
    storage, not our API (the one `fetch` rule 2 allows). The URL expires in 5 minutes and only
    accepts that exact type and size.

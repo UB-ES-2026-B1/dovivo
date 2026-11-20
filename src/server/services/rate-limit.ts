@@ -101,6 +101,21 @@ export const SIGN_IN_PER_IP_LIMIT = 30;
 export const SIGN_IN_PER_EMAIL_LIMIT = 10;
 export const SIGN_IN_WINDOW_MS = FIFTEEN_MINUTES_MS;
 
+/**
+ * Photo upload URLs (`property.photos.createUpload`) allowed per user per window (#108). Every URL
+ * lets the user put up to 5 MB in the bucket, and an upload that is never confirmed stays there
+ * until the lifecycle rule deletes it a day later, so this bounds what one account can store
+ * meanwhile (45 × 5 MB per hour). 45 = three full galleries of 15 photos an hour, enough for an
+ * owner publishing several listings or retrying failed uploads.
+ */
+export const PHOTO_UPLOADS_PER_USER_LIMIT = 45;
+export const PHOTO_UPLOADS_WINDOW_MS = 60 * 60 * 1000;
+
+export const photoUploadRateLimiter = createRateLimiter({
+  limit: PHOTO_UPLOADS_PER_USER_LIMIT,
+  windowMs: PHOTO_UPLOADS_WINDOW_MS,
+});
+
 export const signUpRateLimiter = createRateLimiter({
   limit: SIGN_UP_PER_IP_LIMIT,
   windowMs: SIGN_UP_WINDOW_MS,
