@@ -26,8 +26,8 @@ change. The variables are optional: without them the app works and only the phot
 answer `INTERNAL_SERVER_ERROR` ("Photo storage is not configured.").
 
 Locally, `pnpm storage:up` starts **RustFS** (S3-compatible) in Docker Compose and
-`pnpm storage:setup` creates the bucket with public reads and CORS. Not MinIO: it no longer
-publishes Docker images.
+`pnpm storage:setup` creates the bucket with public reads, CORS and the lifecycle rule for
+uploads never confirmed (see below). Not MinIO: it no longer publishes Docker images.
 
 The bucket is **publicly readable**: photos are as public as the listings. Uploads are only
 possible with a signed URL.
@@ -35,22 +35,42 @@ possible with a signed URL.
 ### Upload flow
 
 1. `property.photos.createUpload({ propertyId, mimeType, sizeBytes })`: owner only; JPG/PNG,
-   ≤ 5 MB, fewer than 15 photos. Returns a key `properties/<propertyId>/<uuid>.<jpg|png>` and a
-   signed `PUT` URL valid for 5 minutes. `Content-Type` and `Content-Length` are part of the
-   signature, so the storage refuses another type or size.
+   ≤ 5 MB, fewer than 15 photos, at most 45 URLs per user per hour. Returns a key
+   `uploads/<propertyId>/<uuid>.<jpg|png>` and a signed `PUT` URL valid for 5 minutes.
+   `Content-Type` and `Content-Length` are part of the signature, so the storage refuses another
+   type or size.
 2. The browser `PUT`s the file straight to the storage. Photos never pass through our server on
    the way in.
 3. `property.photos.confirm({ propertyId, key, alt? })`: owner only; the key must be one made for
    that listing. The server downloads the file and with **sharp**:
    - checks the real content is JPG/PNG (not the declared type), at most 5 MB and 40 MP;
    - saves a re-encoded copy (upright from EXIF, ≤ 1920 px, **no metadata**: EXIF can carry GPS
-     and camera data) as `<uuid>-display.<jpg|png>`;
-   - makes a WebP thumbnail inside 640×480 for the cards (US-18.B2), `<uuid>-thumb.webp`.
+     and camera data) as `properties/<propertyId>/<uuid>-display.<jpg|png>`;
+   - makes a WebP thumbnail inside 640×480 for the cards (US-18.B2),
+     `properties/<propertyId>/<uuid>-thumb.webp`.
 
    Then it creates the `PropertyImage` at the next position (the first photo becomes the cover)
    and deletes the upload. The published files never share a key with the upload, so the signed
    URL, still valid for a few minutes, can't replace them with an unprocessed file. An invalid
    file is deleted from the storage.
+
+### Uploads never confirmed (#108)
+
+An owner could ask for upload URLs and `PUT` files without ever calling `confirm`, and uploads
+that fail or are abandoned also stay in the bucket, which is paid by space. Two limits:
+
+- **Lifecycle rule** on the bucket: objects under `uploads/` expire after **1 day**
+  (`PENDING_UPLOAD_EXPIRATION_DAYS`). Only pending uploads live there; published photos are under
+  `properties/`, so the rule can never delete a file of a `PropertyImage`. It's standard S3
+  (`PutBucketLifecycleConfiguration`), done by the bucket itself, so there's no cron job in the
+  app. `pnpm storage:setup` adds it (rule id `dovivo-expire-pending-uploads`) and keeps the
+  bucket's other rules. AWS S3 and R2 support it, and the local RustFS accepts it. Expiry runs
+  about once a day, so a file can stay up to ~2 days.
+- **Rate limit** on `createUpload`: 45 URLs per user per hour (`photoUploadRateLimiter`,
+  [ADR 0002](./0002-auth.md#rate-limiting-srcserverservicesrate-limitts)), counted only when a
+  URL is given. Per user, not per listing, so spreading uploads over several listings doesn't
+  help. Together with the rule, this bounds what one account can store (45 × 5 MB an hour, each
+  file gone a day later).
 
 ### Database
 
@@ -77,8 +97,10 @@ only one becomes the cover, and the 15 limit holds.
 **Negative / trade-offs**
 
 - `confirm` downloads and processes each photo (a few hundred ms, ≤ 5 MB in memory).
-- Files of uploads that are never confirmed stay in the bucket, and nothing limits how many URLs
-  an owner can ask for: #108 (lifecycle rule / cleanup job, or a rate limit on `createUpload`).
+- Uploads never confirmed stay in the bucket for 1-2 days, until the lifecycle rule deletes
+  them. Every bucket (staging, production) needs that rule: run `pnpm storage:setup` with its
+  `S3_*` values, or add it in the provider's dashboard (prefix `uploads/`, expire after 1 day).
+  The upload rate limit is in memory, per instance (same limitation as in ADR 0002).
 - Files are deleted from the storage only by `property.photos.delete`. Hard-deleting a listing
   or an account (cascade) leaves its files: whoever implements US-07 (delete account) must
   delete them (contract §5).
