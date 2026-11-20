@@ -72,10 +72,13 @@ export type PropertyDetail = Omit<PropertyDetailRow, "deletedAt">;
 
 /**
  * Who may see a listing's detail: nobody if it is soft-deleted (not even its owner), only the
- * owner while it is a draft, and everyone once published, reserved or closed.
+ * owner while it is a draft, and everyone once published, reserved or closed. Also decides which
+ * listings can be saved as favourites (US-14).
  */
 export function canViewPropertyDetail(
-  row: Pick<PropertyDetailRow, "deletedAt" | "status" | "owner">,
+  row: Pick<PropertyDetailRow, "deletedAt" | "status"> & {
+    owner: { id: string };
+  },
   viewerId: string | undefined,
 ): boolean {
   if (row.deletedAt) return false;
