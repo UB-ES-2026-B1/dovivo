@@ -11,11 +11,6 @@ export type PublishFormState = {
   values: PropertyFormValues;
   fieldErrors?: PropertyFormErrors;
   formError?: string;
-  /**
-   * Set when the listing was created but `publish` failed: the next submit only retries the
-   * publish, so a second try never creates a duplicate draft.
-   */
-  draftId?: string;
 };
 
 export const initialPublishFormState: PublishFormState = {

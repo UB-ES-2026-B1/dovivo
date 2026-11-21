@@ -1,21 +1,21 @@
 import { TRPCError } from "@trpc/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { ZodError } from "zod";
 
 import { initialPublishFormState } from "~/app/publish/form-state";
 
-const { create, publish, redirect } = vi.hoisted(() => ({
+const { create, redirect } = vi.hoisted(() => ({
   create: vi.fn(),
-  publish: vi.fn(),
   // Like Next's `redirect`, it throws so the action stops there.
   redirect: vi.fn((url: string) => {
     throw new Error(`REDIRECT ${url}`);
   }),
 }));
 
-vi.mock("~/trpc/server", () => ({ api: { property: { create, publish } } }));
+vi.mock("~/trpc/server", () => ({ api: { property: { create } } }));
 vi.mock("next/navigation", () => ({ redirect }));
 
-const { publishProperty } = await import("./actions");
+const { createListing } = await import("./actions");
 
 function validForm(extra: Record<string, string> = {}): FormData {
   const form = new FormData();
@@ -39,23 +39,21 @@ beforeEach(() => {
   vi.spyOn(console, "error").mockImplementation(() => undefined);
 });
 
-describe("publishProperty", () => {
-  it("creates the draft, publishes it and opens its page", async () => {
+describe("createListing", () => {
+  it("saves the draft and opens the photos step", async () => {
     create.mockResolvedValue({ id: "p1" });
-    publish.mockResolvedValue({ id: "p1" });
 
     await expect(
-      publishProperty(initialPublishFormState, validForm()),
-    ).rejects.toThrow("REDIRECT /properties/p1");
+      createListing(initialPublishFormState, validForm()),
+    ).rejects.toThrow("REDIRECT /publish/p1/photos");
 
     expect(create).toHaveBeenCalledWith(
       expect.objectContaining({ priceCents: 120_000, listingType: "RENT" }),
     );
-    expect(publish).toHaveBeenCalledWith({ id: "p1" });
   });
 
   it("calls nothing when a field is wrong, and keeps what was typed", async () => {
-    const state = await publishProperty(
+    const state = await createListing(
       initialPublishFormState,
       validForm({ price: "", title: "Flat" }),
     );
@@ -70,57 +68,33 @@ describe("publishProperty", () => {
     create.mockRejectedValue(new TRPCError({ code: "UNAUTHORIZED" }));
 
     await expect(
-      publishProperty(initialPublishFormState, validForm()),
+      createListing(initialPublishFormState, validForm()),
     ).rejects.toThrow("REDIRECT /login?callbackUrl=/publish");
   });
 
-  it("shows a general error when creating fails", async () => {
+  it("shows the server's field errors if the schemas ever drift apart", async () => {
+    const cause = new ZodError([
+      {
+        code: "custom",
+        path: ["title"],
+        message: "Title is too long",
+      },
+    ]);
+    create.mockRejectedValue(new TRPCError({ code: "BAD_REQUEST", cause }));
+
+    const state = await createListing(initialPublishFormState, validForm());
+
+    expect(state.fieldErrors?.title).toEqual(["Title is too long"]);
+    expect(redirect).not.toHaveBeenCalled();
+  });
+
+  it("shows a general error when saving fails, keeping the values", async () => {
     create.mockRejectedValue(new Error("db down"));
 
-    const state = await publishProperty(initialPublishFormState, validForm());
+    const state = await createListing(initialPublishFormState, validForm());
 
     expect(state.formError).toMatch(/something went wrong/i);
-    expect(state.draftId).toBeUndefined();
-    expect(publish).not.toHaveBeenCalled();
-  });
-
-  it("keeps the draft when publishing fails, and the retry only publishes it", async () => {
-    create.mockResolvedValue({ id: "p1" });
-    publish.mockRejectedValueOnce(new Error("timeout"));
-
-    const failed = await publishProperty(initialPublishFormState, validForm());
-    expect(failed.draftId).toBe("p1");
-    expect(failed.formError).toMatch(/saved but couldn't be published/);
-    expect(failed.values.title).toBe("Bright flat near the beach");
-
-    // The retry sends only the draft id (the fields are disabled, so the browser leaves them out).
-    publish.mockResolvedValue({ id: "p1" });
-    const retry = new FormData();
-    retry.set("draftId", "p1");
-    await expect(publishProperty(failed, retry)).rejects.toThrow(
-      "REDIRECT /properties/p1",
-    );
-    expect(create).toHaveBeenCalledTimes(1);
-  });
-
-  it("opens the listing if it was already published (a late second click)", async () => {
-    publish.mockRejectedValue(new TRPCError({ code: "CONFLICT" }));
-    const retry = new FormData();
-    retry.set("draftId", "p1");
-
-    await expect(
-      publishProperty(initialPublishFormState, retry),
-    ).rejects.toThrow("REDIRECT /properties/p1");
-  });
-
-  it("doesn't open someone else's listing through a forged draft id", async () => {
-    publish.mockRejectedValue(new TRPCError({ code: "FORBIDDEN" }));
-    const retry = new FormData();
-    retry.set("draftId", "not-mine");
-
-    const state = await publishProperty(initialPublishFormState, retry);
-
+    expect(state.values.title).toBe("Bright flat near the beach");
     expect(redirect).not.toHaveBeenCalled();
-    expect(state.formError).toBeDefined();
   });
 });
