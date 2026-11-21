@@ -30,9 +30,10 @@ export default defineConfig({
   webServer: process.env.E2E_BASE_URL
     ? undefined
     : {
-        command: "pnpm dev",
+        // En CI se sirve la build de producción (`pnpm build` ya hecho); en local, el modo desarrollo.
+        command: process.env.CI ? "pnpm start" : "pnpm dev",
         url: "http://localhost:3000",
-        reuseExistingServer: true,
+        reuseExistingServer: !process.env.CI,
         timeout: 120_000,
       },
 });

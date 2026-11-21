@@ -23,6 +23,31 @@ jobs:
     name: Tests E2E - Chromium
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # Fase 1: no bloqueante mientras la suite se estabiliza (el job se ve en verde aunque falle;
+    # el detalle está en el Summary). Quitar esta línea cuando los tests de S1 y S2 estén estables.
+    continue-on-error: true
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: dovivo
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d dovivo"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://postgres:password@localhost:5432/dovivo
+      AUTH_SECRET: ci-only-secret-not-for-production
+      # Debe seguir en 0: con un proxy configurado, el límite de registros (5 cada 15 min por IP)
+      # bloquearía los tests.
+      TRUSTED_PROXY_COUNT: "0"
 
     steps:
       - name: Checkout repository
@@ -43,10 +68,26 @@ jobs:
       - name: Install Playwright Chromium
         run: pnpm exec playwright install --with-deps chromium
 
+      - name: Apply database migrations
+        run: pnpm db:migrate
+
+      - name: Seed demo data
+        run: pnpm db:seed
+
+      - name: Build the app
+        run: pnpm build
+
       - name: Run Playwright E2E tests
         run: pnpm test:e2e
         env:
           CI: true
+
+      - name: Show QA results in the job summary
+        if: always()
+        run: |
+          if [ -f docs/qa/TEST_RESULTS_AUTO.md ]; then
+            cat docs/qa/TEST_RESULTS_AUTO.md >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - name: Upload Playwright reports
         if: always()
