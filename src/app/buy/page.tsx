@@ -13,7 +13,11 @@ export default async function BuyPage({ searchParams }: Props) {
   return (
     <main className="container mx-auto px-4 py-10">
       <h1 className="mb-6 text-3xl font-bold">Homes for sale</h1>
-      <PublicListings listingType="SALE" searchParams={await searchParams} />
+      <PublicListings
+        listingType="SALE"
+        path="/buy"
+        searchParams={await searchParams}
+      />
     </main>
   );
 }

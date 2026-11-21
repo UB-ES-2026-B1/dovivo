@@ -148,6 +148,20 @@ export function searchQuery(values: SearchFormValues): string {
   return params.toString();
 }
 
+/**
+ * The query string a page received, rebuilt in the order it came. Compared with `searchQuery`
+ * to send a messy URL (empty fields, upper-case type, invalid values) to the clean one.
+ */
+export function receivedQuery(raw: RawSearchParams): string {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(raw)) {
+    for (const item of Array.isArray(value) ? value : [value]) {
+      if (item !== undefined) params.append(key, item);
+    }
+  }
+  return params.toString();
+}
+
 const SEARCH_FILTER_KEYS = [
   "city",
   "neighborhood",
@@ -168,6 +182,9 @@ const SEARCH_FILTER_KEYS = [
 export function hasSearchFilters(filters: Partial<PropertyFilters>): boolean {
   return SEARCH_FILTER_KEYS.some((key) => filters[key] !== undefined);
 }
+
+/** Id of the (visually hidden) results heading, focused after a search. */
+export const RESULTS_HEADING_ID = "search-results";
 
 /** Results counter (US-10.F3): "1 result", "1,234 results". */
 export function resultsCountLabel(total: number): string {

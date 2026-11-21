@@ -32,6 +32,7 @@ export default async function Home({ searchParams }: Props) {
       <h2 className="mb-4 text-2xl font-bold">Latest homes</h2>
       <PublicListings
         listingType={undefined}
+        path="/"
         searchParams={await searchParams}
       />
     </main>

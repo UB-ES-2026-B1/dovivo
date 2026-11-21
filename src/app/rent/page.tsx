@@ -13,7 +13,11 @@ export default async function RentPage({ searchParams }: Props) {
   return (
     <main className="container mx-auto px-4 py-10">
       <h1 className="mb-6 text-3xl font-bold">Homes for rent</h1>
-      <PublicListings listingType="RENT" searchParams={await searchParams} />
+      <PublicListings
+        listingType="RENT"
+        path="/rent"
+        searchParams={await searchParams}
+      />
     </main>
   );
 }

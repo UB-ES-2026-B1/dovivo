@@ -6,6 +6,7 @@ import {
   hasSearchFilters,
   NO_SEARCH_RESULTS_MESSAGE,
   parseSearchParams,
+  receivedQuery,
   resultsCountLabel,
   searchQuery,
 } from "./search-filters";
@@ -159,6 +160,35 @@ describe("searchQuery", () => {
       new URLSearchParams(searchQuery(original.values)),
     );
     expect(parseSearchParams(shared)).toEqual(original);
+  });
+});
+
+describe("receivedQuery", () => {
+  it("matches searchQuery for a clean URL, so it isn't redirected", () => {
+    const raw = { city: "Sant Martí", type: "house", parking: "1" };
+    expect(receivedQuery(raw)).toBe(searchQuery(parseSearchParams(raw).values));
+  });
+
+  it("differs for the URL a form sends without JavaScript", () => {
+    // Every field, also the empty ones, and the type in upper case.
+    const raw = {
+      city: "barcelona",
+      neighborhood: "",
+      type: "APARTMENT",
+      minPrice: "",
+      parking: "1",
+    };
+    expect(receivedQuery(raw)).not.toBe(
+      searchQuery(parseSearchParams(raw).values),
+    );
+    expect(searchQuery(parseSearchParams(raw).values)).toBe(
+      "city=barcelona&type=apartment&parking=1",
+    );
+  });
+
+  it("keeps repeated keys and is empty without parameters", () => {
+    expect(receivedQuery({ city: ["Reus", "Vic"] })).toBe("city=Reus&city=Vic");
+    expect(receivedQuery({})).toBe("");
   });
 });
 

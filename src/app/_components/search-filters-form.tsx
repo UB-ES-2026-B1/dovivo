@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 
 import { propertyTypeLabel } from "~/app/_lib/listing-text";
 import {
   parseSearchParams,
+  RESULTS_HEADING_ID,
   searchQuery,
   type SearchFormValues,
 } from "~/app/_lib/search-filters";
@@ -51,14 +52,36 @@ function NumberField({
  * Search filters panel (US-10.F1). The filters live in the URL (US-10.F2): submitting the form
  * (the Search button or Enter in any field) writes them to the query string and the listing
  * below reloads without reloading the page. It is also a plain GET form, so it works without
- * JavaScript. The parent remounts it with `key` when the URL changes, so the fields always
- * show the search on screen (also after Back or a shared link).
+ * JavaScript. When the URL changes from outside (Back, Clear filters, a link) the fields are
+ * remounted with `key`, so they show that search; after a search from this form they are kept,
+ * so nothing typed in the meantime is lost, and the focus moves to the results.
  */
 export function SearchFiltersForm({ values }: { values: SearchFormValues }) {
   const router = useRouter();
   const pathname = usePathname();
   const [isPending, startTransition] = useTransition();
-  const hasFilters = searchQuery(values) !== "";
+  const query = searchQuery(values);
+  const hasFilters = query !== "";
+  // Remounting the fields resets them to `values`. Only done when the URL changes from outside.
+  const [fieldsKey, setFieldsKey] = useState(query);
+  // Searches sent from this form that haven't reached the URL yet, oldest first.
+  const pendingSearches = useRef<string[]>([]);
+
+  useEffect(() => {
+    const index = pendingSearches.current.indexOf(query);
+    if (index === -1) {
+      // Changed from outside (Back, Clear filters, a link): show that search in the fields.
+      pendingSearches.current = [];
+      setFieldsKey(query);
+      return;
+    }
+    // One of our searches is on screen. Don't reset the fields: the user may already be typing
+    // the next search. Once the last one arrives, move the focus to the results.
+    pendingSearches.current = pendingSearches.current.slice(index + 1);
+    if (pendingSearches.current.length === 0) {
+      document.getElementById(RESULTS_HEADING_ID)?.focus();
+    }
+  }, [query]);
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -72,9 +95,14 @@ export function SearchFiltersForm({ values }: { values: SearchFormValues }) {
         ]),
       ),
     );
-    const query = searchQuery(next);
+    const nextQuery = searchQuery(next);
+    const latest = pendingSearches.current.at(-1) ?? query;
+    if (nextQuery === latest) return;
+    pendingSearches.current.push(nextQuery);
     startTransition(() => {
-      router.push(query ? `${pathname}?${query}` : pathname, { scroll: false });
+      router.push(nextQuery ? `${pathname}?${nextQuery}` : pathname, {
+        scroll: false,
+      });
     });
   }
 
@@ -86,7 +114,7 @@ export function SearchFiltersForm({ values }: { values: SearchFormValues }) {
       onSubmit={handleSubmit}
       className="mb-8 rounded-xl border border-slate-200 bg-white p-4 sm:p-5"
     >
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div key={fieldsKey} className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <div className="col-span-2 sm:col-span-1">
           <label htmlFor="filter-city" className={labelClass}>
             City
@@ -96,7 +124,7 @@ export function SearchFiltersForm({ values }: { values: SearchFormValues }) {
             name="city"
             type="search"
             maxLength={100}
-            placeholder="e.g. Barcelona"
+            placeholder="Full name, e.g. Barcelona"
             defaultValue={values.city}
             className={inputClass}
           />
@@ -110,7 +138,7 @@ export function SearchFiltersForm({ values }: { values: SearchFormValues }) {
             name="neighborhood"
             type="search"
             maxLength={100}
-            placeholder="e.g. Gràcia"
+            placeholder="Full name, e.g. Gràcia"
             defaultValue={values.neighborhood}
             className={inputClass}
           />
