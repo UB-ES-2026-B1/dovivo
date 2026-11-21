@@ -5,6 +5,8 @@ type FieldProps = {
   autoComplete?: string;
   hint?: string;
   maxLength?: number;
+  /** Keyboard on phones, e.g. "numeric" for whole numbers typed in a text input. */
+  inputMode?: React.HTMLAttributes<HTMLInputElement>["inputMode"];
   /** Initial value, e.g. to prefill an edit form. */
   defaultValue?: string;
   errors?: string[];
@@ -18,6 +20,7 @@ export function Field({
   autoComplete,
   hint,
   maxLength,
+  inputMode,
   defaultValue,
   errors,
 }: FieldProps) {
@@ -36,6 +39,7 @@ export function Field({
         type={type}
         autoComplete={autoComplete}
         maxLength={maxLength}
+        inputMode={inputMode}
         defaultValue={defaultValue}
         aria-invalid={hasError}
         aria-describedby={hasError ? errorId : hint ? hintId : undefined}
