@@ -56,3 +56,4 @@ yarn-error.log*
 # test results QA
 test-results/
 playwright-report/
+docs/qa/.results-state.json

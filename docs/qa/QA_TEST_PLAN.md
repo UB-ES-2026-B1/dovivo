@@ -81,7 +81,6 @@ Dovivo es un portal web para **comprar, alquilar y publicar viviendas**. El obje
 | --------------------------- | --------- | -------- | ------------------------------------------------------------------------------------------ |
 | Funcional                   | Muy alta  | Sí       | Cada criterio de aceptación de las historias Must.                                         |
 | Sistema (extremo a extremo) | Muy alta  | Sí       | Criterio de éxito del MVP: flujo completo en staging.                                      |
-| Regresión                   | Muy alta  | Sí       | Hay 3 sprints con cambios continuos sobre login, listado y ficha.                          |
 | Aceptación                  | Muy alta  | Sí       | La DoD exige que QA valide los tests de aceptación y el PO acepte.                         |
 | Seguridad                   | Alta      | Sí       | Contraseñas, sesiones, permisos entre usuarios, subida de ficheros, XSS.                   |
 | Integración                 | Alta      | Sí       | tRPC ↔ Prisma ↔ PostgreSQL; servicio de emails (US-21).                                    |
@@ -93,19 +92,16 @@ Dovivo es un portal web para **comprar, alquilar y publicar viviendas**. El obje
 
 ## 5. Herramientas y entorno
 
-| Herramienta                                       | Uso                                                                  | Estado                          |
-| ------------------------------------------------- | -------------------------------------------------------------------- | ------------------------------- |
-| GitHub Issues + Projects                          | Bugs y seguimiento de tareas QA                                      | Esencial                        |
-| Chrome DevTools                                   | Pruebas manuales, red, modo móvil                                    | Esencial                        |
-| Prisma Studio (`pnpm db:studio`)                  | Comprobar datos en la BD (hash de contraseña, borrado lógico…)       | Esencial                        |
-| Datos de prueba (`pnpm db:seed`, `pnpm db:reset`) | 1.000 anuncios y BD limpia                                           | Esencial                        |
-| Vitest (ya instalado)                             | Tests de validadores (`src/lib/validators`) y routers                | Recomendado                     |
-| GitHub Actions (`ci.yml`, ya configurado)         | Comprobar que el CI está verde en cada PR                            | Esencial                        |
-| Playwright (planificado en el README)             | Automatizar flujos críticos (login, publicar, buscar)                | Recomendado desde S2/S3         |
-| Lighthouse / axe DevTools                         | Rendimiento y accesibilidad                                          | Opcional                        |
-| k6                                                | Carga                                                                | Opcional (existe ya `db:bench`) |
-| OWASP ZAP                                         | Seguridad dinámica; **solo en tu entorno local o de staging propio** | Opcional                        |
-| Postman                                           | Menos útil: la API es tRPC (no REST); ver `docs/api.md`              | Baja prioridad                  |
+| Herramienta                                       | Uso                                                            | Estado                  |
+| ------------------------------------------------- | -------------------------------------------------------------- | ----------------------- |
+| GitHub Issues + Projects                          | Bugs y seguimiento de tareas QA                                | Esencial                |
+| Chrome DevTools                                   | Pruebas manuales, red, modo móvil                              | Esencial                |
+| Prisma Studio (`pnpm db:studio`)                  | Comprobar datos en la BD (hash de contraseña, borrado lógico…) | Esencial                |
+| Datos de prueba (`pnpm db:seed`, `pnpm db:reset`) | 1.000 anuncios y BD limpia                                     | Esencial                |
+| Vitest (ya instalado)                             | Tests de validadores (`src/lib/validators`) y routers          | Recomendado             |
+| GitHub Actions (`ci.yml`, ya configurado)         | Comprobar que el CI está verde en cada PR                      | Esencial                |
+| Playwright (planificado en el README)             | Automatizar flujos críticos (login, publicar, buscar)          | Recomendado desde S2/S3 |
+| k6                                                | Carga                                                          | (existe ya `db:bench`)  |
 
 **Entorno de pruebas:** local con Docker (`pnpm db:up`) y **staging** (a confirmar con DevOps). Registrar siempre el commit probado.
 
