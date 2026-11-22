@@ -7,8 +7,8 @@ import { auth } from "~/server/auth";
 export const metadata: Metadata = { title: "Publish a property" };
 
 /**
- * Publish a listing (US-17). Private: without a session it goes to the login and comes back here
- * afterwards ("No puc publicar sense haver iniciat sessió").
+ * Publish a listing, step 1 of 2 (US-17): the details. Step 2 adds the photos (US-18). Private:
+ * without a session it goes to the login and comes back here afterwards ("No puc publicar sense haver iniciat sessió").
  */
 export default async function PublishPage() {
   const session = await auth();
@@ -16,10 +16,11 @@ export default async function PublishPage() {
 
   return (
     <main className="container mx-auto max-w-2xl px-4 py-10">
-      <h1 className="text-3xl font-bold">Publish a property</h1>
+      <p className="text-sm font-medium text-emerald-700">Step 1 of 2</p>
+      <h1 className="mt-1 text-3xl font-bold">Publish a property</h1>
       <p className="mt-2 text-slate-600">
         Fill in the details of your home. Fields without &quot;(optional)&quot;
-        are required.
+        are required. You&apos;ll add the photos in the next step.
       </p>
       <PublishForm />
     </main>
