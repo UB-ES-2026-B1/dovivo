@@ -108,8 +108,15 @@ Environment variables), never from the repository:
 Configured by hand in the Cloudflare dashboard (bucket → Settings), not with `pnpm storage:setup`:
 
 - **Public Development URL**: enabled, so photos are publicly readable.
-- **CORS Policy**: the staging origin, methods `PUT`, `GET` and `HEAD`.
-- **Object Lifecycle Rules**: delete the `uploads/` prefix after 1 day (see #108).
+- **CORS Policy**: allowed origin is exactly the staging origin (no trailing slash); methods `PUT`,
+  `GET` and `HEAD`; allowed headers `*`. The browser's `PUT` sends `Content-Type` (signed in
+  `createUpload`), which triggers a preflight `OPTIONS` request: without `AllowedHeaders` the upload
+  fails with a CORS error. Max age 3600 s.
+- **Object Lifecycle Rules**: not created yet; add it once [#110](https://github.com/UB-ES-2026-B1/dovivo/pull/110)
+  is merged, because that PR is what moves pending uploads under the `uploads/` prefix (today they go
+  to `properties/<id>/`). The rule deletes `uploads/` after 1 day. Never apply it to `properties/`:
+  it would delete the published photos. Until then, uploads that are never confirmed stay in the
+  bucket.
 
 The `r2.dev` URL is rate-limited and meant for development. A production setup should connect a
 custom domain to the bucket.
