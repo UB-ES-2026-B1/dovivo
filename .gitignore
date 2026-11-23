@@ -57,3 +57,4 @@ yarn-error.log*
 test-results/
 playwright-report/
 docs/qa/.results-state.json
+docs/qa/TEST_RESULTS_AUTO.md
