@@ -1,9 +1,7 @@
 # Casos de prueba — Dovivo
 
-> Los casos salen de los criterios de aceptación de las historias **Must** del Product Owner (`Dovivo_PO.docx`), más casos de seguridad, límites y exploratorios.
-> Estados: **Passed**, **Failed**, **Blocked**, **Not run**. Los resultados se registran en [TEST_RESULTS.md](TEST_RESULTS.md).
-
-**Total de casos diseñados: 87**
+> Los casos salen de los criterios de aceptación de las historias **Must** (`Dovivo_PO.docx`), más casos de seguridad, límites y exploratorios.
+> Estados: **Passed**, **Failed**, **Blocked**, **Not run**. Los resultados se registran en [TEST_RESULTS_AUTO.md](TEST_RESULTS.AUTO.md).
 
 ## Datos y entorno de prueba
 

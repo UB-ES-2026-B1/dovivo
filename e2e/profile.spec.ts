@@ -19,7 +19,9 @@ test.describe("US-04 / US-05 Perfil", () => {
     // Si existe /profile/[id], abrir el de otro usuario y esperar 403/404 o redirección.
   });
 
-  test("TC-020 / TC-023 modificar el nombre se ve al instante y tras recargar", async ({ page }) => {
+  test("TC-020 / TC-023 modificar el nombre se ve al instante y tras recargar", async ({
+    page,
+  }) => {
     const nuevo = `Nombre QA ${Date.now()}`;
     await page.goto(ROUTES.profile);
     await page.getByLabel(T.name).first().fill(nuevo);
@@ -39,13 +41,17 @@ test.describe("US-04 / US-05 Perfil", () => {
     }
   });
 
-  test("TC-022 un campo inválido muestra error y no guarda nada", async ({ page }) => {
+  test("TC-022 un campo inválido muestra error y no guarda nada", async ({
+    page,
+  }) => {
     await page.goto(ROUTES.profile);
     const nombreOriginal = await page.getByLabel(T.name).first().inputValue();
     await page.getByLabel(T.name).first().fill("");
     await page.getByLabel(T.phone).first().fill("abc");
     await page.getByRole("button", { name: T.save }).click();
-    await expect(page.getByRole("alert").or(page.locator(":invalid")).first()).toBeVisible();
+    await expect(
+      page.getByRole("alert").or(page.locator(":invalid")).first(),
+    ).toBeVisible();
     await page.reload();
     await expect(page.getByLabel(T.name).first()).toHaveValue(nombreOriginal);
   });
