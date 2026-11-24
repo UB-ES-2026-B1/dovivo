@@ -5,19 +5,22 @@ import {
   isPhotoKeyOf,
   isStorageKey,
   newPhotoKey,
+  PENDING_UPLOAD_PREFIX,
   photoUrl,
   thumbnailKeyFor,
 } from "./photo-keys";
 
 const UUID = "0f8fad5b-d9cb-469f-a165-70867728950e";
+const UPLOAD = `uploads/prop_1/${UUID}.jpg`;
 
 describe("newPhotoKey", () => {
-  it("puts the photo under its listing with the format's extension", () => {
-    expect(newPhotoKey("prop_1", "image/jpeg", UUID)).toBe(
-      `properties/prop_1/${UUID}.jpg`,
-    );
+  it("puts the upload under the pending prefix and its listing, with the format's extension", () => {
+    expect(newPhotoKey("prop_1", "image/jpeg", UUID)).toBe(UPLOAD);
     expect(newPhotoKey("prop_1", "image/png", UUID)).toBe(
-      `properties/prop_1/${UUID}.png`,
+      `uploads/prop_1/${UUID}.png`,
+    );
+    expect(newPhotoKey("prop_1", "image/png")).toMatch(
+      new RegExp(`^${PENDING_UPLOAD_PREFIX}`),
     );
   });
 
@@ -36,12 +39,14 @@ describe("isPhotoKeyOf", () => {
   });
 
   it.each([
-    ["another listing", `properties/prop_2/${UUID}.jpg`],
-    ["a prefix of the id", `properties/prop_10/${UUID}.jpg`],
+    ["another listing", `uploads/prop_2/${UUID}.jpg`],
+    ["a prefix of the id", `uploads/prop_10/${UUID}.jpg`],
+    ["a published photo", `properties/prop_1/${UUID}-display.jpg`],
+    ["an upload key of the old format", `properties/prop_1/${UUID}.jpg`],
     ["a thumbnail", `properties/prop_1/${UUID}-thumb.webp`],
-    ["another extension", `properties/prop_1/${UUID}.gif`],
-    ["a nested path", `properties/prop_1/x/${UUID}.jpg`],
-    ["a path traversal", `properties/prop_1/../prop_2/${UUID}.jpg`],
+    ["another extension", `uploads/prop_1/${UUID}.gif`],
+    ["a nested path", `uploads/prop_1/x/${UUID}.jpg`],
+    ["a path traversal", `uploads/prop_1/../prop_2/${UUID}.jpg`],
     ["any other object", "secrets/backup.sql"],
   ])("refuses %s", (_case, key) => {
     expect(isPhotoKeyOf("prop_1", key)).toBe(false);
@@ -49,23 +54,30 @@ describe("isPhotoKeyOf", () => {
 });
 
 describe("displayKeyFor", () => {
-  it("adds -display and keeps the format, so it never equals the upload's key", () => {
-    expect(displayKeyFor(`properties/prop_1/${UUID}.jpg`)).toBe(
-      `properties/prop_1/${UUID}-display.jpg`,
-    );
-    expect(displayKeyFor(`properties/prop_1/${UUID}.png`)).toBe(
+  it("publishes under properties/ with -display and the same format", () => {
+    expect(displayKeyFor(UPLOAD)).toBe(`properties/prop_1/${UUID}-display.jpg`);
+    expect(displayKeyFor(`uploads/prop_1/${UUID}.png`)).toBe(
       `properties/prop_1/${UUID}-display.png`,
     );
-    expect(
-      isPhotoKeyOf("prop_1", displayKeyFor(`properties/prop_1/${UUID}.jpg`)),
-    ).toBe(false);
+  });
+
+  it("is outside the pending prefix (never expires) and never an upload key", () => {
+    expect(displayKeyFor(UPLOAD).startsWith(PENDING_UPLOAD_PREFIX)).toBe(false);
+    expect(isPhotoKeyOf("prop_1", displayKeyFor(UPLOAD))).toBe(false);
+  });
+
+  it("refuses a key that isn't an upload", () => {
+    expect(() => displayKeyFor(`properties/prop_1/${UUID}.jpg`)).toThrow();
   });
 });
 
 describe("thumbnailKeyFor", () => {
-  it("adds -thumb and uses WebP", () => {
-    expect(thumbnailKeyFor(`properties/prop_1/${UUID}.png`)).toBe(
+  it("publishes under properties/ with -thumb and uses WebP", () => {
+    expect(thumbnailKeyFor(`uploads/prop_1/${UUID}.png`)).toBe(
       `properties/prop_1/${UUID}-thumb.webp`,
+    );
+    expect(thumbnailKeyFor(UPLOAD).startsWith(PENDING_UPLOAD_PREFIX)).toBe(
+      false,
     );
   });
 });

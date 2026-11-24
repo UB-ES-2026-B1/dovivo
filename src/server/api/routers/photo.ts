@@ -27,6 +27,7 @@ import {
   type PhotoStorage,
 } from "~/server/services/photo-storage";
 import { withPhotoUrls } from "~/server/services/property-card";
+import { photoUploadRateLimiter } from "~/server/services/rate-limit";
 import {
   galleryOrderBy,
   publicImageSelect,
@@ -34,8 +35,9 @@ import {
 
 /**
  * Listing photos (US-18): `property.photos.*`. Upload is two calls, as in contract §7:
- * 1. `createUpload` checks the owner, the type, the size and the 15-photo limit and returns a
- *    signed URL; the browser `PUT`s the file straight to the storage.
+ * 1. `createUpload` checks the owner, the type, the size, the 15-photo limit and the user's upload
+ *    rate limit and returns a signed URL; the browser `PUT`s the file straight to the storage.
+ *    Uploads never confirmed are deleted by the bucket's lifecycle rule (`pnpm storage:setup`).
  * 2. `confirm` checks the uploaded file, saves a re-encoded copy and a thumbnail under their own
  *    keys, creates the `PropertyImage` and deletes the upload.
  * `update` reorders the gallery or changes the cover, and `delete` removes a photo and its files.
@@ -163,6 +165,15 @@ export const photoRouter = createTRPCRouter({
         where: { propertyId: input.propertyId },
       });
       if (count >= MAX_PHOTOS_PER_PROPERTY) throw tooManyPhotos();
+
+      // Counted last, so requests refused above don't use up the user's uploads (#108). Per
+      // user, not per listing: that also covers one owner spreading uploads over many listings.
+      if (!photoUploadRateLimiter.check(ctx.session.user.id).allowed) {
+        throw new TRPCError({
+          code: "TOO_MANY_REQUESTS",
+          message: "Too many photo uploads. Please try again later.",
+        });
+      }
 
       const key = newPhotoKey(input.propertyId, input.mimeType);
       const { url, expiresAt } = await storage.createUploadUrl({
