@@ -1,5 +1,8 @@
 import { type Prisma } from "@prisma/client";
 
+import { env } from "~/env";
+import { photoUrl } from "~/server/services/photo-keys";
+
 /**
  * Listing card resource (US-09): the fields a card shows (cover photo, price, location, m² and
  * bedrooms) and nothing else. Reused by every list of cards (search, favourites...), so the
@@ -50,9 +53,27 @@ export type PropertyCard = Omit<PropertyCardRow, "images"> & {
   cover: PropertyCardCover | null;
 };
 
+/**
+ * Photos store the storage key (US-18); the API answers with the public URL. `publicBaseUrl` is a
+ * parameter only so tests don't depend on the env.
+ */
+export function withPhotoUrls<
+  T extends { url: string; thumbnailUrl: string | null },
+>(image: T, publicBaseUrl: string | undefined = env.S3_PUBLIC_URL): T {
+  return {
+    ...image,
+    url: photoUrl(image.url, publicBaseUrl),
+    thumbnailUrl:
+      image.thumbnailUrl === null
+        ? null
+        : photoUrl(image.thumbnailUrl, publicBaseUrl),
+  };
+}
+
 export function toPropertyCard({
   images,
   ...property
 }: PropertyCardRow): PropertyCard {
-  return { ...property, cover: images[0] ?? null };
+  const cover = images[0];
+  return { ...property, cover: cover ? withPhotoUrls(cover) : null };
 }

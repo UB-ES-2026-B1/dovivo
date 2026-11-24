@@ -1,5 +1,7 @@
 import { type Prisma } from "@prisma/client";
 
+import { withPhotoUrls } from "~/server/services/property-card";
+
 /**
  * Listing detail resource (US-12): what the public detail page shows. Every field is listed
  * explicitly, so internal columns (`ownerId`, `deletedAt`, `createdAt`, image upload metadata)
@@ -70,10 +72,13 @@ export type PropertyDetail = Omit<PropertyDetailRow, "deletedAt">;
 
 /**
  * Who may see a listing's detail: nobody if it is soft-deleted (not even its owner), only the
- * owner while it is a draft, and everyone once published, reserved or closed.
+ * owner while it is a draft, and everyone once published, reserved or closed. Also decides which
+ * listings can be saved as favourites (US-14).
  */
 export function canViewPropertyDetail(
-  row: Pick<PropertyDetailRow, "deletedAt" | "status" | "owner">,
+  row: Pick<PropertyDetailRow, "deletedAt" | "status"> & {
+    owner: { id: string };
+  },
   viewerId: string | undefined,
 ): boolean {
   if (row.deletedAt) return false;
@@ -85,5 +90,8 @@ export function toPropertyDetail({
   deletedAt: _deletedAt,
   ...detail
 }: PropertyDetailRow): PropertyDetail {
-  return detail;
+  return {
+    ...detail,
+    images: detail.images.map((image) => withPhotoUrls(image)),
+  };
 }

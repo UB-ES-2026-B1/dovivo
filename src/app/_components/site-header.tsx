@@ -11,6 +11,9 @@ const NAV = [
   { href: "/publish", label: "Publish" },
 ];
 
+/** Only for signed-in users: a visitor has no favourites (US-14.F2). */
+const SIGNED_IN_NAV = [...NAV, { href: "/favourites", label: "Favourites" }];
+
 /**
  * Server action behind "Sign out" (US-03): Auth.js clears the session cookie and redirects home.
  * As a form action it works before hydration and without JavaScript, and Auth.js errors go through
@@ -42,7 +45,7 @@ export async function SiteHeader() {
           aria-label="Main"
           className="order-last flex w-full items-center gap-6 text-sm font-medium sm:order-none sm:ml-auto sm:w-auto"
         >
-          {NAV.map((item) => (
+          {(session ? SIGNED_IN_NAV : NAV).map((item) => (
             <Link
               key={item.href}
               href={item.href}

@@ -1,11 +1,17 @@
 import Link from "next/link";
 
 import { PublicListings } from "~/app/_components/public-listings";
+import { type RawSearchParams } from "~/app/_lib/search-filters";
 
 export const dynamic = "force-dynamic";
 
-/** Home page: short intro and the public listing of homes for sale and rent (US-09). */
-export default function Home() {
+type Props = { searchParams: Promise<RawSearchParams> };
+
+/**
+ * Home page: short intro and the public listing of homes for sale and rent (US-09), with the
+ * search filters (US-10).
+ */
+export default async function Home({ searchParams }: Props) {
   return (
     <main className="container mx-auto px-4 py-10">
       <section className="mb-10 text-center">
@@ -24,7 +30,11 @@ export default function Home() {
         </p>
       </section>
       <h2 className="mb-4 text-2xl font-bold">Latest homes</h2>
-      <PublicListings listingType={undefined} />
+      <PublicListings
+        listingType={undefined}
+        path="/"
+        searchParams={await searchParams}
+      />
     </main>
   );
 }

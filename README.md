@@ -249,6 +249,7 @@ npx auth secret              # writes AUTH_SECRET into .env.local (works on ever
 pnpm db:up                   # starts PostgreSQL in Docker (localhost:5432)
 pnpm db:migrate              # applies migrations to your local DB
 pnpm db:seed                 # optional: 1,000 demo listings (see Scripts)
+pnpm mail:up                 # optional: local SMTP inbox for the app's emails (http://localhost:8025)
 
 pnpm dev                     # http://localhost:3000
 ```
@@ -273,6 +274,7 @@ docker compose down           # stop (add -v to also delete the DB volume)
 | `db`      | PostgreSQL 17, data in the `dovivo_db-data` volume, port `5432`  |
 | `migrate` | Runs `prisma migrate deploy` once, then exits                    |
 | `app`     | Next.js standalone server on port `3000`, healthcheck `/api/health` |
+| `mail`    | Mailpit (only with `docker compose up -d mail`): catches the app's emails, inbox at http://localhost:8025 |
 
 Ports can be changed with `DB_PORT` / `APP_PORT` in `.env` (useful if you already run Postgres
 locally). If you change `DB_PORT`, update the port in `DATABASE_URL` too.
@@ -296,6 +298,7 @@ locally). If you change `DB_PORT`, update the port in `DATABASE_URL` too.
 | `pnpm db:seed [--count N]`       | Demo listings (default 1,000). Re-running replaces the previous seed data only |
 | `pnpm db:bench [--runs N]`       | Times `property.list` on the local DB; fails if a p95 is over 300 ms (seed `--count 10000` first) |
 | `pnpm docker:up` / `docker:down` | Full stack in Docker                                 |
+| `pnpm mail:up`                   | Mailpit: local SMTP server + inbox at http://localhost:8025 ([ADR 0005](docs/adr/0005-email.md)) |
 
 ## Database workflow
 
@@ -352,7 +355,7 @@ flowchart LR
 | Branch | Purpose | Rules |
 | --- | --- | --- |
 | `main` | Stable branch used for demos and releases | Never touched directly. Protected. It only receives the release PR from `development` at the end of each sprint. |
-| `development` | Integration branch | Every task branch starts here and every PR targets it. |
+| `development` | Integration branch | Every task branch starts here and every PR targets it. Protected like `main` (same ruleset): no direct pushes, it can't be deleted (not even by the release PR merge) and PRs need green CI. |
 | `feat/…`, `fix/…`, `docs/…`, `chore/…` | One short-lived branch per task | Branch from `development`, open a small PR back, delete the branch after merging. |
 
 Flow: branch from `development` → small PR (the PR template loads automatically) → CI green → review by at least one other teammate → merge into `development`. Nobody merges their own PR. Mention the task in the PR title, e.g. `(T-01)` or `(US-02)`.

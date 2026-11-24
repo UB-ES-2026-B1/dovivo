@@ -1,14 +1,16 @@
 import Link from "next/link";
 
 import { loginToContactHref } from "~/app/_lib/listing-text";
+import { ContactForm } from "~/app/properties/[id]/contact-form";
 import { type RouterOutputs } from "~/trpc/react";
 
 type Owner = RouterOutputs["property"]["byId"]["owner"];
 
 /**
- * Who publishes the listing and the Contact button (US-12.F2). Only the name and avatar are
- * public; the contact details stay private. Without a session, Contact goes to the login and
- * back here. The message form itself is US-21.
+ * Who publishes the listing and how to contact them (US-12.F2, US-21.F1). Only the name and
+ * avatar are public; the contact details stay private. A signed-in visitor gets the message form;
+ * without a session, Contact goes to the login and back here. The owner sees no form, as the API
+ * refuses messages about your own listing.
  */
 export function AdvertiserCard({
   owner,
@@ -61,20 +63,7 @@ export function AdvertiserCard({
         {isOwner ? (
           <p className="text-sm text-slate-600">This is your listing.</p>
         ) : viewerId ? (
-          <>
-            {/* TODO(US-21): open the message form instead of a disabled button. */}
-            <button
-              type="button"
-              disabled
-              aria-describedby="contact-soon"
-              className="w-full rounded-full bg-emerald-700 px-4 py-2 font-medium text-white disabled:opacity-60"
-            >
-              Contact advertiser
-            </button>
-            <p id="contact-soon" className="mt-2 text-xs text-slate-500">
-              Messaging is coming soon.
-            </p>
-          </>
+          <ContactForm propertyId={propertyId} advertiserName={displayName} />
         ) : (
           <Link
             href={loginToContactHref(propertyId)}

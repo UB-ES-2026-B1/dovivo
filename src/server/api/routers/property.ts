@@ -5,6 +5,7 @@ import {
   propertyFiltersSchema,
   propertyIdSchema,
 } from "~/lib/validators/property";
+import { photoRouter } from "~/server/api/routers/photo";
 import {
   createTRPCRouter,
   protectedProcedure,
@@ -16,8 +17,12 @@ import {
   toPropertyDetail,
 } from "~/server/services/property-detail";
 import { listPropertyCards } from "~/server/services/property-list";
+import { propertySearchColumns } from "~/lib/search-text";
 
 export const propertyRouter = createTRPCRouter({
+  /** Listing photos (US-18): `property.photos.createUpload`, `confirm`, `update`, `delete`. */
+  photos: photoRouter,
+
   /**
    * Public search used by the /buy and /rent pages (US-09): published listings as cards (see
    * `propertyCardSelect`), newest first, cursor-based pagination.
@@ -53,15 +58,25 @@ export const propertyRouter = createTRPCRouter({
     }),
   ),
 
-  /** Publish flow: creates a DRAFT owned by the current user. */
+  /**
+   * Publish flow, step 1 (US-17): creates a DRAFT owned by the current user. The client then adds
+   * photos (US-18) and calls `publish` to make it visible in the list and the search. The owner
+   * always comes from the session: `ownerId` or `status` in the input are stripped by zod and
+   * `ownerId` is set after the spread, so the body can't override it.
+   */
   create: protectedProcedure
     .input(createPropertySchema)
     .mutation(({ ctx, input }) =>
       ctx.db.property.create({
-        data: { ...input, ownerId: ctx.session.user.id },
+        data: {
+          ...input,
+          ...propertySearchColumns(input),
+          ownerId: ctx.session.user.id,
+        },
       }),
     ),
 
+  /** Publish flow, step 2 (US-17): DRAFT → PUBLISHED. Only the owner. */
   publish: protectedProcedure
     .input(propertyIdSchema)
     .mutation(async ({ ctx, input }) => {

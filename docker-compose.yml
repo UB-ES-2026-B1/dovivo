@@ -1,6 +1,10 @@
 # dovivo local stack.
 #   Only the database (recommended for day-to-day dev, app runs with `pnpm dev`):
 #     docker compose up -d db
+#   Photo storage (US-18), an S3-compatible server; then `pnpm storage:setup` once:
+#     docker compose up -d storage
+#   Email (T-16), a local SMTP server with a web inbox on http://localhost:8025:
+#     docker compose up -d mail
 #   Full stack (db + migrations + production build of the app on http://localhost:3000):
 #     docker compose up --build
 name: dovivo
@@ -22,6 +26,31 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+
+  # Local S3-compatible storage for listing photos (US-18). RustFS instead of MinIO, which no
+  # longer publishes Docker images. S3 API on :9000, web console on :9001.
+  storage:
+    image: rustfs/rustfs:1.0.5
+    restart: unless-stopped
+    environment:
+      RUSTFS_ACCESS_KEY: rustfsadmin
+      RUSTFS_SECRET_KEY: rustfsadmin
+      RUSTFS_CONSOLE_ENABLE: "true"
+    ports:
+      - "${STORAGE_PORT:-9000}:9000"
+      - "${STORAGE_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      # Named volume: a bind mount would need to be writable by the image's user (UID 10001).
+      - storage-data:/data
+
+  # Local SMTP server for the app's emails (T-16). It catches every email (nothing reaches real
+  # addresses) and shows them at http://localhost:8025. SMTP on :1025.
+  mail:
+    image: axllent/mailpit:v1.32.0
+    restart: unless-stopped
+    ports:
+      - "${MAIL_SMTP_PORT:-1025}:1025"
+      - "${MAIL_UI_PORT:-8025}:8025"
 
   migrate:
     build:
@@ -47,6 +76,9 @@ services:
       DATABASE_URL: postgresql://postgres:password@db:5432/dovivo
       AUTH_SECRET: ${AUTH_SECRET:-dev-only-insecure-secret-change-me}
       AUTH_URL: ${AUTH_URL:-http://localhost:3000}
+      # Emails go to the `mail` service (start it with `docker compose up -d mail`).
+      SMTP_HOST: mail
+      SMTP_PORT: "1025"
     ports:
       - "${APP_PORT:-3000}:3000"
     depends_on:
@@ -55,3 +87,4 @@ services:
 
 volumes:
   db-data:
+  storage-data:
