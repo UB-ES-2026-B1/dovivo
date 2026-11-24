@@ -210,3 +210,16 @@ export function getClientIp(
   if (entries.length < trustedProxyCount) return null;
   return nonEmpty(entries[entries.length - trustedProxyCount]);
 }
+
+/**
+ * Messages to advertisers (`conversation.start`, US-21) allowed per user per window. Each one
+ * sends an email, so this stops one account from spamming advertisers through dovivo. 20 an hour
+ * is far more than a buyer asking about homes needs.
+ */
+export const MESSAGES_PER_USER_LIMIT = 20;
+export const MESSAGES_WINDOW_MS = 60 * 60 * 1000;
+
+export const messageRateLimiter = createRateLimiter({
+  limit: MESSAGES_PER_USER_LIMIT,
+  windowMs: MESSAGES_WINDOW_MS,
+});

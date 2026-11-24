@@ -1,4 +1,5 @@
 import { authRouter } from "~/server/api/routers/auth";
+import { conversationRouter } from "~/server/api/routers/conversation";
 import { favouriteRouter } from "~/server/api/routers/favourite";
 import { propertyRouter } from "~/server/api/routers/property";
 import { userRouter } from "~/server/api/routers/user";
@@ -11,6 +12,7 @@ import { createCallerFactory, createTRPCRouter } from "~/server/api/trpc";
  */
 export const appRouter = createTRPCRouter({
   auth: authRouter,
+  conversation: conversationRouter,
   favourite: favouriteRouter,
   property: propertyRouter,
   user: userRouter,

@@ -29,6 +29,20 @@ export const env = createEnv({
       .default("false")
       .transform((value) => value === "true"),
     S3_PUBLIC_URL: z.string().url().optional(),
+    // Email (T-16): any SMTP server (Mailpit locally, Mailtrap for the demo, a provider in
+    // production). Optional so the app boots without it: emails are then logged as not sent.
+    SMTP_HOST: z.string().optional(),
+    SMTP_PORT: z.coerce.number().int().min(1).max(65535).default(587),
+    SMTP_USER: z.string().optional(),
+    SMTP_PASSWORD: z.string().optional(),
+    // `true` for implicit TLS (port 465); `false` uses STARTTLS when the server offers it.
+    SMTP_SECURE: z
+      .enum(["true", "false"])
+      .default("false")
+      .transform((value) => value === "true"),
+    EMAIL_FROM: z.string().default("dovivo <no-reply@dovivo.local>"),
+    // Public URL of the app, for the links in the emails.
+    APP_URL: z.string().url().default("http://localhost:3000"),
     NODE_ENV: z
       .enum(["development", "test", "production"])
       .default("development"),
@@ -60,6 +74,13 @@ export const env = createEnv({
     S3_SECRET_ACCESS_KEY: process.env.S3_SECRET_ACCESS_KEY,
     S3_FORCE_PATH_STYLE: process.env.S3_FORCE_PATH_STYLE,
     S3_PUBLIC_URL: process.env.S3_PUBLIC_URL,
+    SMTP_HOST: process.env.SMTP_HOST,
+    SMTP_PORT: process.env.SMTP_PORT,
+    SMTP_USER: process.env.SMTP_USER,
+    SMTP_PASSWORD: process.env.SMTP_PASSWORD,
+    SMTP_SECURE: process.env.SMTP_SECURE,
+    EMAIL_FROM: process.env.EMAIL_FROM,
+    APP_URL: process.env.APP_URL,
     NODE_ENV: process.env.NODE_ENV,
   },
   /**
