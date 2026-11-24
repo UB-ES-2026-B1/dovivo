@@ -8,14 +8,17 @@ const gridClass = "grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3";
 /** Responsive grid of listing cards. Reusable by any list (home, search, favourites). */
 export function PropertyGrid({
   properties,
+  signedIn,
 }: {
   properties: PropertyCardData[];
+  /** Whether the hearts save the listing or send to the login (US-14.F1). */
+  signedIn: boolean;
 }) {
   return (
     <ul className={gridClass}>
       {properties.map((property) => (
         <li key={property.id} className="min-w-0">
-          <PropertyCard property={property} />
+          <PropertyCard property={property} signedIn={signedIn} />
         </li>
       ))}
     </ul>

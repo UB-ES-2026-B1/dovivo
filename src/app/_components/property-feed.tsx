@@ -21,7 +21,14 @@ export type PropertyFeedFilters = Omit<Partial<PropertyFilters>, "cursor">;
  * previous page's `nextCursor`. With search filters (US-10) it shows the number of results and,
  * if there are none, suggests relaxing the filters.
  */
-export function PropertyFeed({ filters }: { filters: PropertyFeedFilters }) {
+export function PropertyFeed({
+  filters,
+  signedIn,
+}: {
+  filters: PropertyFeedFilters;
+  /** Whether the hearts save the listing or send to the login (US-14.F1). */
+  signedIn: boolean;
+}) {
   const pathname = usePathname();
   const [data, query] = api.property.list.useSuspenseInfiniteQuery(filters, {
     getNextPageParam: (lastPage) => lastPage.nextCursor,
@@ -63,7 +70,7 @@ export function PropertyFeed({ filters }: { filters: PropertyFeedFilters }) {
           {resultsCountLabel(total)}
         </p>
       )}
-      <PropertyGrid properties={properties} />
+      <PropertyGrid properties={properties} signedIn={signedIn} />
 
       {query.isFetchNextPageError && (
         <p role="alert" className="text-center text-sm text-red-700">
