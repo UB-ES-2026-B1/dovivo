@@ -29,6 +29,8 @@
     "storage:setup": "tsx --env-file-if-exists=.env scripts/storage-setup.ts",
     "storage:up": "docker compose up -d storage",
     "test": "vitest run",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit"
   },
@@ -55,6 +57,7 @@
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.1",
+    "@playwright/test": "^1.65.1",
     "@tailwindcss/postcss": "^4.0.15",
     "@types/node": "^20.14.10",
     "@types/nodemailer": "^8.0.2",

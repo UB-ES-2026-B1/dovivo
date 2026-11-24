@@ -1,0 +1,116 @@
+name: Dovivo - Playwright E2E
+
+on:
+  pull_request:
+    branches:
+      - development
+
+  push:
+    branches:
+      - development
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: playwright-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  playwright:
+    name: Tests E2E - Chromium
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: dovivo
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d dovivo"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://postgres:password@localhost:5432/dovivo
+      AUTH_SECRET: ci-only-secret-not-for-production
+      # Debe seguir en 0: con un proxy configurado, el límite de registros (5 cada 15 min por IP)
+      # bloquearía los tests.
+      TRUSTED_PROXY_COUNT: "0"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Apply database migrations
+        run: pnpm db:migrate
+
+      - name: Seed demo data
+        run: pnpm db:seed
+
+      - name: Build the app
+        run: pnpm build
+
+      - name: Run Playwright E2E tests
+        run: pnpm test:e2e
+        env:
+          CI: true
+
+      - name: Show QA results in the job summary
+        if: always()
+        run: |
+          if [ -f docs/qa/TEST_RESULTS_AUTO.md ]; then
+            cat docs/qa/TEST_RESULTS_AUTO.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload Playwright reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dovivo-playwright-report
+          path: |
+            playwright-report/
+            test-results/
+            docs/qa/TEST_RESULTS_AUTO.md
+          retention-days: 30
+          if-no-files-found: ignore
+  staging:
+    name: E2E contra staging (manual)
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      E2E_BASE_URL: https://dovivo-staging-ahbzg9e9ghb8enb3.francecentral-01.azurewebsites.net
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm exec playwright test system.spec.ts --grep "TC-082|TC-086"

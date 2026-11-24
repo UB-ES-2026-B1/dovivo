@@ -1,5 +1,6 @@
 import tsconfigPaths from "vite-tsconfig-paths";
 import { defineConfig } from "vitest/config";
+import { configDefaults } from "vitest/config";
 
 export default defineConfig({
   plugins: [tsconfigPaths()],
@@ -15,5 +16,6 @@ export default defineConfig({
         inline: ["next-auth"],
       },
     },
+    exclude: [...configDefaults.exclude, "e2e/**"],
   },
 });
