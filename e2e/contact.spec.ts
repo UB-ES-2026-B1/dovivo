@@ -44,8 +44,9 @@ test("TC-067 no puedo escribir a un anuncio que he publicado yo", async ({
   void user;
   await publishListing(page);
   const boton = botonContacto(page);
-  // Aceptable: botón oculto o deshabilitado.
+  // El propietario no ve un botón activo: o está deshabilitado o se muestra el aviso.
   if ((await boton.count()) > 0) await expect(boton).toBeDisabled();
+  else await expect(page.getByText(/this is your listing/i)).toBeVisible();
 });
 
 base(
@@ -54,15 +55,16 @@ base(
     await page.goto(ROUTES.buy);
     await cards(page).first().click();
     await page.waitForURL(/\/properties\/[^/]+$/);
+    const ficha = new URL(page.url()).pathname;
+
     await botonContacto(page).click();
+
+    // Va al login y guarda la ficha para volver después (US-12.F2).
+    await expect(page).toHaveURL(/\/login\?callbackUrl=/);
+    expect(new URL(page.url()).searchParams.get("callbackUrl")).toBe(ficha);
     await expect(
-      page
-        .getByText(/(log ?in|sign ?in|iniciar sesi|inicia la sesi)/i)
-        .first()
-        .or(page.locator("body"))
-        .first(),
+      page.getByRole("heading", { name: /sign in|iniciar sesi/i }),
     ).toBeVisible();
-    await expect(page).toHaveURL(/login|properties/); // redirige al login o muestra aviso en la ficha
   },
 );
 

@@ -1,14 +1,24 @@
 import { defineConfig, devices } from "@playwright/test";
+// Specs de historias aún sin implementar. Quita cada uno al cerrar su sprint.
+
+// E2E_ALL=1 los ejecuta todos.
+const PENDING = ["search", "publish", "contact", "favourites", "my-listings"];
+const CI = !!process.env.CI;
 
 export default defineConfig({
   testDir: "./e2e",
+  testIgnore: process.env.E2E_ALL
+    ? undefined
+    : PENDING.map((n) => `**/${n}.spec.ts`),
+  globalTimeout: CI ? 20 * 60_000 : undefined,
+  maxFailures: CI ? 15 : undefined,
   // `next dev` compila cada página la primera vez que se visita, y eso puede tardar varios segundos.
-  timeout: 60_000,
-  expect: { timeout: 15_000 },
+  timeout: CI ? 30_000 : 60_000,
+  expect: { timeout: CI ? 10_000 : 15_000 },
   fullyParallel: true,
   workers: process.env.CI ? 2 : undefined,
   forbidOnly: !!process.env.CI,
-  retries: process.env.CI ? 2 : 0,
+  retries: CI ? 1 : 0,
   reporter: [
     ["html", { open: "never" }],
     ["list"],

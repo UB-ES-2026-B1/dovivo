@@ -97,31 +97,11 @@ export async function fillRegister(page: Page, u: User) {
   await field(page, T.password).fill(u.password);
 }
 
-/**
- * Registra un usuario. Por defecto, si el registro no deja la sesión iniciada,
- * inicia sesión a mano para que el resto de tests pueda continuar.
- * Los tests de US-01 (TC-001, TC-004) usan `autoLogin: false` para detectar ese defecto.
- */
-export async function register(
-  page: Page,
-  u: User,
-  opts: { autoLogin?: boolean } = {},
-) {
+/** Registra un usuario. El registro debe dejar la sesión iniciada por sí solo (US-01). */
+export async function register(page: Page, u: User) {
   await fillRegister(page, u);
   await submitButton(page, T.submitRegister).click();
-  await page.waitForURL((url) => !url.pathname.startsWith(ROUTES.register), {
-    timeout: 15_000,
-  });
-  if (opts.autoLogin === false) return;
-
-  const dentro = await logoutControl(page)
-    .waitFor({ state: "visible", timeout: 5_000 })
-    .then(() => true)
-    .catch(() => false);
-  if (!dentro) {
-    await login(page, u.email, u.password);
-    await expectLoggedIn(page);
-  }
+  await expectLoggedIn(page);
 }
 
 export async function login(page: Page, email: string, password: string) {

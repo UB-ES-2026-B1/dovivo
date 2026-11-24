@@ -54,12 +54,7 @@ base(
   async ({ page }) => {
     await page.goto(ROUTES.buy);
     await botonFavorito(page).click();
-    await expect(
-      page
-        .getByText(/(log ?in|sign ?in|iniciar sesi)/i)
-        .first()
-        .or(page.locator("body")),
-    ).toBeVisible();
-    await expect(page).toHaveURL(/login|buy/);
+    await expect(page).toHaveURL(/\/login\?callbackUrl=/);
+    expect(new URL(page.url()).searchParams.get("callbackUrl")).toBe("/buy");
   },
 );

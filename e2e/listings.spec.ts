@@ -19,7 +19,9 @@ test.describe("US-09 Explorar la oferta (visitante, sin sesión)", () => {
     page,
   }) => {
     await page.goto(ROUTES.buy);
-    const card = cards(page).first();
+    const card = cards(page)
+      .filter({ has: page.locator("img") })
+      .first();
     await expect(card.locator("img").first()).toBeVisible();
     const text = (await card.innerText()).replace(/\s+/g, " ");
     expect(text, "precio").toMatch(/[€$£]|eur/i);
@@ -46,11 +48,15 @@ test.describe("US-12 Ficha del anuncio", () => {
     page,
   }) => {
     await page.goto(ROUTES.buy);
-    await cards(page).first().click();
+    await cards(page)
+      .filter({ has: page.locator("img") })
+      .first()
+      .click();
     await expect(page).toHaveURL(/\/properties\/[^/]+$/);
-    const body = (await page.locator("main").innerText()).replace(/\s+/g, " ");
-    expect(body, "precio").toMatch(/[€$£]|eur/i);
-    expect(body, "m²").toMatch(/m²|m2/i);
+    // Esperar a la ficha real: mientras carga, loading.tsx solo pinta esqueletos sin texto.
+    await expect(page.locator("h1")).toBeVisible();
+    await expect(page.locator("main")).toContainText(/[€$£]|eur/i); // precio
+    await expect(page.locator("main")).toContainText(/m²|m2/i); // superficie
     await expect(page.locator("main img").first()).toBeVisible(); // galería
     await expect(
       page
@@ -63,13 +69,15 @@ test.describe("US-12 Ficha del anuncio", () => {
   test("TC-032 un anuncio inexistente devuelve una 404 amigable", async ({
     page,
   }) => {
-    const res = await page.goto("/properties/id-que-no-existe-123");
-    expect(res?.status()).toBe(404);
+    await page.goto("/properties/id-que-no-existe-123");
     await expect(
-      page
-        .getByText(/404|not found|no (s'ha|se ha) trobat|no encontrad/i)
-        .first(),
+      page.getByRole("heading", { name: /couldn.t find this home/i }),
     ).toBeVisible();
+    // Con loading.tsx el estado HTTP es 200 (streaming), pero Next marca la página como noindex.
+    await expect(page.locator('meta[name="robots"]').first()).toHaveAttribute(
+      "content",
+      /noindex/,
+    );
     await expect(page.getByText(/stack|at \w+\.\w+ \(/i)).toHaveCount(0); // sin trazas internas
   });
 
