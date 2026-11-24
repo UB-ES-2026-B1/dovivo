@@ -108,3 +108,40 @@ only one becomes the cover, and the 15 limit holds.
   (`S3_CORS_ORIGINS` + `pnpm storage:setup`, or the provider's dashboard).
 - The full Docker Compose stack (`docker compose up`) doesn't wire the app to the local storage:
   signed URLs must use an address the browser can reach. Use `pnpm dev` for photos.
+
+## Staging setup
+
+Staging uses a **Cloudflare R2** bucket (S3-compatible, free tier). The bucket
+`dovivo-photos-staging` lives in the devops member's (Martí) Cloudflare account: ask them for any
+change to it.
+
+The app reads these variables from the App Service settings (Azure → `dovivo-staging` →
+Environment variables), never from the repository:
+
+| Variable                                    | Value in staging                                                     |
+| ------------------------------------------- | -------------------------------------------------------------------- |
+| `S3_ENDPOINT`                               | `https://<account-id>.r2.cloudflarestorage.com` (without the bucket) |
+| `S3_REGION`                                 | `auto`                                                               |
+| `S3_BUCKET`                                 | `dovivo-photos-staging`                                              |
+| `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY` | R2 API token with _Object Read & Write_ on this bucket only          |
+| `S3_FORCE_PATH_STYLE`                       | `false`                                                              |
+| `S3_PUBLIC_URL`                             | the bucket's public `https://pub-….r2.dev` URL                       |
+
+Configured by hand in the Cloudflare dashboard (bucket → Settings), not with `pnpm storage:setup`:
+
+- **Public Development URL**: enabled, so photos are publicly readable.
+- **CORS Policy**: allowed origin is exactly the staging origin (no trailing slash); methods `PUT`,
+  `GET` and `HEAD`; allowed headers `*`. The browser's `PUT` sends `Content-Type` (signed in
+  `createUpload`), which triggers a preflight `OPTIONS` request: without `AllowedHeaders` the upload
+  fails with a CORS error. Max age 3600 s.
+- **Object Lifecycle Rules**: not created yet; add it once [#110](https://github.com/UB-ES-2026-B1/dovivo/pull/110)
+  is merged, because that PR is what moves pending uploads under the `uploads/` prefix (today they go
+  to `properties/<id>/`). The rule deletes `uploads/` after 1 day. Never apply it to `properties/`:
+  it would delete the published photos. Until then, uploads that are never confirmed stay in the
+  bucket.
+
+The `r2.dev` URL is rate-limited and meant for development. A production setup should connect a
+custom domain to the bucket.
+
+To rotate the keys: create a new token in R2 → Manage API Tokens, update the two `S3_*` key
+variables in Azure, then delete the old token.
