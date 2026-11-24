@@ -7,27 +7,38 @@ import {
   propertyCardSelect,
   toPropertyCard,
 } from "~/server/services/property-card";
+import { normalizeSearchText } from "~/lib/search-text";
 
 /**
- * Public listing search (US-09). Pure function: the database is passed in, so the router, unit
+ * Public listing search (US-09, filters from US-10). Pure function: the database is passed in, so the router, unit
  * tests (with a fake) and the benchmark (`prisma/bench-list.ts`, real database) run the same query.
  */
 
 /** The slice of Prisma this function uses; tests pass a fake implementing only this. */
 export type PropertyListDb = {
-  property: Pick<AppPrismaClient["property"], "findMany">;
+  property: Pick<AppPrismaClient["property"], "findMany" | "count">;
 };
 
 export type PropertyListPage = {
   items: PropertyCard[];
   /** Pass it back as `cursor` to get the next page; `undefined` on the last page. */
   nextCursor: string | undefined;
+  /**
+   * Listings matching the filters across all pages, for the results counter (US-10). Only counted
+   * on the first page (no `cursor`): later pages return `undefined`, keep the first page's value.
+   */
+  total: number | undefined;
 };
 
 /** Only listings visitors can see: published and not soft-deleted. */
 export function propertyListWhere({
   minPriceCents,
   maxPriceCents,
+  minAreaM2,
+  maxAreaM2,
+  hasParking,
+  city,
+  neighborhood,
   ...filters
 }: Omit<PropertyFilters, "limit" | "cursor">): Prisma.PropertyWhereInput {
   return {
@@ -35,10 +46,21 @@ export function propertyListWhere({
     deletedAt: null,
     listingType: filters.listingType,
     propertyType: filters.propertyType,
-    // `city` is citext, so a plain equals is case-insensitive and uses the index.
-    city: filters.city,
+    // Compared on the normalised search keys (US-10): ignores case and accents, uses the index.
+    citySearch: city ? normalizeSearchText(city) : undefined,
+    neighborhoodSearch: neighborhood
+      ? normalizeSearchText(neighborhood)
+      : undefined,
     bedrooms: filters.minBedrooms ? { gte: filters.minBedrooms } : undefined,
+    bathrooms: filters.minBathrooms ? { gte: filters.minBathrooms } : undefined,
     priceCents: { gte: minPriceCents, lte: maxPriceCents },
+    // `areaM2` is optional: only filter when asked, so listings without it are not dropped. A minimum
+    // of 0 means "no minimum", as for bedrooms and bathrooms (`areaM2 >= 0` would drop NULLs).
+    areaM2:
+      minAreaM2 || maxAreaM2 !== undefined
+        ? { gte: minAreaM2 === 0 ? undefined : minAreaM2, lte: maxAreaM2 }
+        : undefined,
+    hasParking: hasParking ? true : undefined,
   };
 }
 
@@ -52,16 +74,21 @@ export async function listPropertyCards(
   db: PropertyListDb,
   { limit, cursor, ...filters }: PropertyFilters,
 ): Promise<PropertyListPage> {
-  const rows = await db.property.findMany({
-    where: propertyListWhere(filters),
-    select: propertyCardSelect,
-    orderBy: propertyListOrderBy,
-    // One extra row: if it comes back, it is the first listing of the next page (the cursor is
-    // inclusive).
-    take: limit + 1,
-    cursor: cursor ? { id: cursor } : undefined,
-  });
+  const where = propertyListWhere(filters);
+  const [rows, total] = await Promise.all([
+    db.property.findMany({
+      where,
+      select: propertyCardSelect,
+      orderBy: propertyListOrderBy,
+      // One extra row: if it comes back, it is the first listing of the next page (the cursor is
+      // inclusive).
+      take: limit + 1,
+      cursor: cursor ? { id: cursor } : undefined,
+    }),
+    // Same `where`, no cursor: the total of the whole search. "Load more" pages skip it.
+    cursor ? undefined : db.property.count({ where }),
+  ]);
 
   const nextCursor = rows.length > limit ? rows.pop()?.id : undefined;
-  return { items: rows.map(toPropertyCard), nextCursor };
+  return { items: rows.map(toPropertyCard), nextCursor, total };
 }

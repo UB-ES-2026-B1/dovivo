@@ -249,6 +249,7 @@ npx auth secret              # writes AUTH_SECRET into .env.local (works on ever
 pnpm db:up                   # starts PostgreSQL in Docker (localhost:5432)
 pnpm db:migrate              # applies migrations to your local DB
 pnpm db:seed                 # optional: 1,000 demo listings (see Scripts)
+pnpm mail:up                 # optional: local SMTP inbox for the app's emails (http://localhost:8025)
 
 pnpm dev                     # http://localhost:3000
 ```
@@ -273,6 +274,7 @@ docker compose down           # stop (add -v to also delete the DB volume)
 | `db`      | PostgreSQL 17, data in the `dovivo_db-data` volume, port `5432`  |
 | `migrate` | Runs `prisma migrate deploy` once, then exits                    |
 | `app`     | Next.js standalone server on port `3000`, healthcheck `/api/health` |
+| `mail`    | Mailpit (only with `docker compose up -d mail`): catches the app's emails, inbox at http://localhost:8025 |
 
 Ports can be changed with `DB_PORT` / `APP_PORT` in `.env` (useful if you already run Postgres
 locally). If you change `DB_PORT`, update the port in `DATABASE_URL` too.
@@ -296,6 +298,7 @@ locally). If you change `DB_PORT`, update the port in `DATABASE_URL` too.
 | `pnpm db:seed [--count N]`       | Demo listings (default 1,000). Re-running replaces the previous seed data only |
 | `pnpm db:bench [--runs N]`       | Times `property.list` on the local DB; fails if a p95 is over 300 ms (seed `--count 10000` first) |
 | `pnpm docker:up` / `docker:down` | Full stack in Docker                                 |
+| `pnpm mail:up`                   | Mailpit: local SMTP server + inbox at http://localhost:8025 ([ADR 0005](docs/adr/0005-email.md)) |
 
 ## Database workflow
 

@@ -16,6 +16,7 @@ import { propertyDetailSelect } from "~/server/services/property-detail";
 const fakeDb = {
   property: {
     findMany: vi.fn(),
+    count: vi.fn(),
     findUnique: vi.fn(),
     findUniqueOrThrow: vi.fn(),
     create: vi.fn(),
@@ -146,6 +147,11 @@ describe("property.create", () => {
     areaM2: 80,
     neighborhood: "Vila de Gràcia",
   };
+  // Normalised copies of `city` / `neighborhood` the location filters search on (US-10).
+  const searchColumns = {
+    citySearch: "barcelona",
+    neighborhoodSearch: "vila de gracia",
+  };
 
   it("returns UNAUTHORIZED without a session and never writes", async () => {
     await expect(
@@ -163,7 +169,7 @@ describe("property.create", () => {
     ).resolves.toEqual(created);
     // No status in `data`: the column defaults to DRAFT until `publish`.
     expect(fakeDb.property.create).toHaveBeenCalledWith({
-      data: { ...listing, ownerId: "owner_1" },
+      data: { ...listing, ...searchColumns, ownerId: "owner_1" },
     });
   });
 
@@ -180,7 +186,7 @@ describe("property.create", () => {
     await makeCaller(ownerSession).property.create(input);
 
     expect(fakeDb.property.create).toHaveBeenCalledWith({
-      data: { ...listing, ownerId: "owner_1" },
+      data: { ...listing, ...searchColumns, ownerId: "owner_1" },
     });
   });
 
@@ -206,8 +212,28 @@ describe("property.create", () => {
         hasElevator: true,
         hasParking: false,
         isFurnished: true,
+        citySearch: "barcelona",
+        neighborhoodSearch: null,
         ownerId: "owner_1",
       },
+    });
+  });
+
+  it("normalises the search keys: no accents, plain apostrophe, no neighbourhood → null (US-10)", async () => {
+    fakeDb.property.create.mockResolvedValue({ id: "prop_1" });
+
+    await makeCaller(ownerSession).property.create({
+      ...validListing,
+      city: "L’Hospitalet de Llobregat",
+    });
+
+    expect(fakeDb.property.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        city: "L’Hospitalet de Llobregat",
+        citySearch: "l'hospitalet de llobregat",
+        neighborhoodSearch: null,
+        ownerId: "owner_1",
+      }) as unknown,
     });
   });
 
@@ -339,10 +365,12 @@ describe("property.list", () => {
         images: [],
       },
     ]);
+    fakeDb.property.count.mockResolvedValue(1);
 
     const page = await makeCaller(null).property.list({ listingType: "SALE" });
 
     expect(page.nextCursor).toBeUndefined();
+    expect(page.total).toBe(1);
     expect(page.items).toEqual([
       expect.objectContaining({ id: "prop_1", cover: null }),
     ]);

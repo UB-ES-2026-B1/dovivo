@@ -5,6 +5,7 @@ import {
   propertyFiltersSchema,
   propertyIdSchema,
 } from "~/lib/validators/property";
+import { photoRouter } from "~/server/api/routers/photo";
 import {
   createTRPCRouter,
   protectedProcedure,
@@ -16,8 +17,12 @@ import {
   toPropertyDetail,
 } from "~/server/services/property-detail";
 import { listPropertyCards } from "~/server/services/property-list";
+import { propertySearchColumns } from "~/lib/search-text";
 
 export const propertyRouter = createTRPCRouter({
+  /** Listing photos (US-18): `property.photos.createUpload`, `confirm`, `update`, `delete`. */
+  photos: photoRouter,
+
   /**
    * Public search used by the /buy and /rent pages (US-09): published listings as cards (see
    * `propertyCardSelect`), newest first, cursor-based pagination.
@@ -63,7 +68,11 @@ export const propertyRouter = createTRPCRouter({
     .input(createPropertySchema)
     .mutation(({ ctx, input }) =>
       ctx.db.property.create({
-        data: { ...input, ownerId: ctx.session.user.id },
+        data: {
+          ...input,
+          ...propertySearchColumns(input),
+          ownerId: ctx.session.user.id,
+        },
       }),
     ),
 
