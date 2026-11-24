@@ -3,6 +3,8 @@
 #     docker compose up -d db
 #   Photo storage (US-18), an S3-compatible server; then `pnpm storage:setup` once:
 #     docker compose up -d storage
+#   Email (T-16), a local SMTP server with a web inbox on http://localhost:8025:
+#     docker compose up -d mail
 #   Full stack (db + migrations + production build of the app on http://localhost:3000):
 #     docker compose up --build
 name: dovivo
@@ -41,6 +43,15 @@ services:
       # Named volume: a bind mount would need to be writable by the image's user (UID 10001).
       - storage-data:/data
 
+  # Local SMTP server for the app's emails (T-16). It catches every email (nothing reaches real
+  # addresses) and shows them at http://localhost:8025. SMTP on :1025.
+  mail:
+    image: axllent/mailpit:v1.32.0
+    restart: unless-stopped
+    ports:
+      - "${MAIL_SMTP_PORT:-1025}:1025"
+      - "${MAIL_UI_PORT:-8025}:8025"
+
   migrate:
     build:
       context: .
@@ -65,6 +76,9 @@ services:
       DATABASE_URL: postgresql://postgres:password@db:5432/dovivo
       AUTH_SECRET: ${AUTH_SECRET:-dev-only-insecure-secret-change-me}
       AUTH_URL: ${AUTH_URL:-http://localhost:3000}
+      # Emails go to the `mail` service (start it with `docker compose up -d mail`).
+      SMTP_HOST: mail
+      SMTP_PORT: "1025"
     ports:
       - "${APP_PORT:-3000}:3000"
     depends_on:

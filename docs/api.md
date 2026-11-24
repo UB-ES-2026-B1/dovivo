@@ -218,6 +218,24 @@ says whose.
   | `CLOSED` | Sold (`listingType: "SALE"`) or rented (`"RENT"`) | Mark it as sold / rented; the detail page opens |
   | `UNAVAILABLE` | Deleted by the owner or back to draft | Mark it "no disponible" and don't link to the detail page (`NOT_FOUND`); offer to remove it |
 
+**Contact the advertiser (US-21)**: `api.conversation.start.useMutation()` with
+`{ propertyId, body }`, from the contact form on the listing page. Signed-in users only
+(`UNAUTHORIZED` otherwise: send visitors to `loginToContactHref(propertyId)`). Validate the form
+with `startConversationSchema` (`~/lib/validators/conversation`), so it gives the same errors
+as the server.
+
+- `body` is trimmed and must have 1-2000 characters (`MESSAGE_MAX_LENGTH`). Empty or blank →
+  `BAD_REQUEST`, "Write a message." on `fieldErrors.body`.
+- Returns `{ conversationId, message: { id, body, createdAt } }`: show the confirmation
+  (US-21.F2). Sending again about the same listing adds the message to the same conversation.
+- `FORBIDDEN` ("You can't send a message about your own listing.") on the user's own listing:
+  better, hide the form when `property.owner.id` is the session's user.
+- `NOT_FOUND` if the listing is missing, deleted or someone else's draft (as `property.byId`).
+- `TOO_MANY_REQUESTS` ("Too many messages. Please try again later.") past 20 messages per hour
+  per user.
+- The advertiser gets an email with the message and a link to the listing. If the email fails,
+  the message is still saved and the call succeeds: there's no "email failed" error to show.
+
 ## Open points
 
 Pending decisions already listed in contract §10 and in §7 "Contracte API (T-06)" are not

@@ -16,6 +16,7 @@ procedures per sprint and the API contract (§7, T-06), search spike (§8, T-07)
 | [ADR 0002: Authentication](./adr/0002-auth.md) | Credentials + JWT details, hashing, user enumeration, blocked users, sign-out gap, rate limiting | T-06 |
 | [ADR 0003: Chat and chatbot](./adr/0003-chat-and-chatbot.md) | Polling instead of realtime for US-21/US-22; chatbot pointer to contract §9 | T-09 |
 | [ADR 0004: Photo storage](./adr/0004-photo-storage.md) | S3-compatible bucket, signed upload URL + confirm, sharp re-encoding and thumbnails (US-18) | T-10 |
+| [ADR 0005: Email service](./adr/0005-email.md) | SMTP with nodemailer (Mailpit locally, Mailtrap for the demo), failure policy, spam limit for messages (US-21) | T-16 |
 
 ## Architecture Decision Records
 
