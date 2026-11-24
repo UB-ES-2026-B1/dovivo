@@ -196,6 +196,28 @@ does, the upload is kept and calling `confirm` again with the same key works.
 After any of these, invalidate `property.byId` for the listing (or set its `images` with the
 returned gallery).
 
+**Favourites (US-14)**: signed-in users only (`UNAUTHORIZED` otherwise: a visitor pressing the
+heart is sent to `/login?callbackUrl=<current path>`). Always the session's favourites: no input
+says whose.
+
+- `api.favourite.ids.useQuery()` returns the ids of every saved listing (unavailable ones too).
+  Load it once after signing in to fill the hearts of the cards and the detail page.
+- `api.favourite.add.useMutation()` / `api.favourite.remove.useMutation()` with `{ propertyId }`
+  return `{ propertyId, isFavourite }`. Both are idempotent: a double click or a retry is safe.
+  `add` answers `NOT_FOUND` if the user couldn't open the listing (missing, deleted, someone
+  else's draft). `remove` always works, also for a deleted listing. After either, update
+  `favourite.ids` (optimistically or by invalidating it) and invalidate `favourite.list`.
+- `api.favourite.list.useInfiniteQuery({ limit? }, { getNextPageParam: (p) => p.nextCursor })`
+  returns `{ items, nextCursor }`, newest saved first (20 per page, max 50). Each item is a listing
+  card (same fields as `property.list`) plus `savedAt` and `availability`:
+
+  | `availability` | Meaning | UI |
+  | --- | --- | --- |
+  | `AVAILABLE` | Published | Normal card |
+  | `RESERVED` | Reserved by the owner | Mark it as reserved; the detail page opens |
+  | `CLOSED` | Sold (`listingType: "SALE"`) or rented (`"RENT"`) | Mark it as sold / rented; the detail page opens |
+  | `UNAVAILABLE` | Deleted by the owner or back to draft | Mark it "no disponible" and don't link to the detail page (`NOT_FOUND`); offer to remove it |
+
 ## Open points
 
 Pending decisions already listed in contract §10 and in §7 "Contracte API (T-06)" are not
